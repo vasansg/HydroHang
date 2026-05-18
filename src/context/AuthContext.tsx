@@ -9,7 +9,7 @@ import {
   User,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, firebaseReady } from '@/lib/firebase';
 import { UserModel } from '@/lib/types';
 
 interface AuthContextType {
@@ -35,11 +35,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!firebaseReady || !auth || !db) {
+      setLoading(false);
+      return;
+    }
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       try {
         if (firebaseUser) {
-          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+          const snap = await getDoc(doc(db!, 'users', firebaseUser.uid));
           if (snap.exists()) {
             setUserModel(snap.data() as UserModel);
           } else {
@@ -49,7 +53,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUserModel(null);
         }
       } catch {
-        // Keep auth alive even if profile fetch fails due to rules/network.
         setUserModel(null);
       } finally {
         setLoading(false);
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    if (!auth || !db) throw new Error('Firebase is not configured.');
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const snap = await getDoc(doc(db, 'users', cred.user.uid));
     if (snap.exists()) setUserModel(snap.data() as UserModel);
@@ -71,6 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: 'Primary' | 'Secondary',
     familyCode?: string
   ) => {
+    if (!auth || !db) throw new Error('Firebase is not configured.');
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const uid = cred.user.uid;
 
@@ -99,14 +104,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     };
 
-    await setDoc(doc(db, 'users', uid), newUser);
+    await setDoc(doc(db!, 'users', uid), newUser);
     setUserModel(newUser as UserModel);
   };
 
   const logout = async () => {
+    if (!auth) return;
     await signOut(auth);
     setUserModel(null);
   };
+
+  if (!firebaseReady) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f172a', color: 'white', flexDirection: 'column', gap: '12px', padding: '24px', textAlign: 'center' }}>
+        <p style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Firebase environment variables are missing.</p>
+        <p style={{ color: '#94a3b8', maxWidth: '480px' }}>
+          Add your Firebase config to Vercel: Settings → Environment Variables. See the README or deployment guide for the required variable names.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, userModel, loading, login, register, logout }}>
