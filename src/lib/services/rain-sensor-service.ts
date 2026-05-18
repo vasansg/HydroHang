@@ -1,4 +1,4 @@
-import { initializeApp, getApps } from 'firebase/app';
+import { getApps } from 'firebase/app';
 import { getDatabase, ref, onValue, update } from 'firebase/database';
 import { RainSensorData } from '@/lib/types';
 

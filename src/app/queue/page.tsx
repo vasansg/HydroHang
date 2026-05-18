@@ -10,7 +10,6 @@ import {
   updateDoc,
   doc,
   Timestamp,
-  getDocs,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -413,7 +412,7 @@ function MachineCard({
   machine,
   queue,
   uid,
-  tick,
+  tick: _tick,
 }: {
   machine: WashingMachine;
   queue: QueueModel[];
@@ -507,7 +506,7 @@ function MachineCard({
 function QueueCard({
   item,
   isOwn,
-  tick,
+  tick: _tick,
   onComplete,
   onCancel,
 }: {

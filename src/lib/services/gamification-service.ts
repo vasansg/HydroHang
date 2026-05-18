@@ -2,12 +2,10 @@ import {
   doc,
   getDoc,
   setDoc,
-  collection,
-  getDocs,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { GamificationData, LeaderboardEntry, UserModel, getTier, ALL_BADGES } from '@/lib/types';
+import { GamificationData, LeaderboardEntry, UserModel, getTier } from '@/lib/types';
 
 const COLLECTION = 'gamification';
 
@@ -139,7 +137,7 @@ export async function recordAiScheduleUse(userId: string): Promise<GamificationD
   const data = await fetchGamification(userId);
   const earned = new Set<string>(data.earnedBadgeIds);
   const newCount = data.aiScheduleCount + 1;
-  let xpGained = XP_REWARDS.aiScheduleUsed;
+  const xpGained = XP_REWARDS.aiScheduleUsed;
 
   if (newCount >= 5) earned.add('ai_planner');
 

@@ -292,7 +292,7 @@ export async function getCompletedSessions(
   washingMachineId: string,
   since?: Date
 ): Promise<QueueModel[]> {
-  let q = query(
+  const q = query(
     collection(db, COLLECTION),
     where('familyCode', '==', familyCode),
     where('washingMachineId', '==', washingMachineId),

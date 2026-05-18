@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import {
   collection,
   query,
@@ -13,7 +13,6 @@ import {
   getDocs,
   orderBy,
   Timestamp,
-  getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -82,7 +81,6 @@ function getInitials(name: string): string {
 
 export default function MachineDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const machineId = params.machineId as string;
   const { userModel } = useAuth();
 
@@ -91,7 +89,7 @@ export default function MachineDetailPage() {
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Chat state
@@ -479,7 +477,7 @@ export default function MachineDetailPage() {
               <Clock size={20} className="text-yellow-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-black text-sm text-yellow-300">You're in queue</p>
+              <p className="font-black text-sm text-yellow-300">You&apos;re in queue</p>
               <p className="text-yellow-400/70 text-xs mt-0.5">Position #{myWaitingSession.position} · {myWaitingSession.durationMinutes} min session</p>
             </div>
             <button

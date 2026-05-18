@@ -24,7 +24,7 @@ function isInQuietHours(prefs: Record<string, unknown>): boolean {
   const [sh, sm] = startStr.split(':').map(Number);
   const [eh, em] = endStr.split(':').map(Number);
 
-  let start = new Date(now);
+  const start = new Date(now);
   start.setHours(sh, sm, 0, 0);
   let end = new Date(now);
   end.setHours(eh, em, 0, 0);
