@@ -58,7 +58,7 @@ export default function QueuePage() {
   const [search, setSearch] = useState('');
   const [showAvailableOnly, setShowAvailableOnly] = useState(false);
   const [sortMode, setSortMode] = useState<'name_asc' | 'name_desc' | 'status'>('name_asc');
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const familyCode = userModel?.familyCode ?? '';
@@ -94,7 +94,7 @@ export default function QueuePage() {
       setMachines(list);
       if (list.length > 0 && !machineId) setMachineId(list[0].id);
     });
-  }, [familyCode]);
+  }, [familyCode, machineId]);
 
   const [joinError, setJoinError] = useState<string | null>(null);
 
@@ -265,7 +265,6 @@ export default function QueuePage() {
                   machine={m}
                   queue={queue}
                   uid={uid}
-                  tick={tick}
                 />
               ))}
             </div>
@@ -382,7 +381,6 @@ export default function QueuePage() {
                   key={item.id}
                   item={item}
                   isOwn={item.userId === uid}
-                  tick={tick}
                   onComplete={() => updateStatus(item.id, 'completed')}
                   onCancel={() => updateStatus(item.id, 'cancelled')}
                 />
@@ -412,12 +410,10 @@ function MachineCard({
   machine,
   queue,
   uid,
-  tick: _tick,
 }: {
   machine: WashingMachine;
   queue: QueueModel[];
   uid: string;
-  tick: number;
 }) {
   const activeSession = queue.find(
     (q) => q.washingMachineId === machine.id && q.status === 'active'
@@ -506,13 +502,11 @@ function MachineCard({
 function QueueCard({
   item,
   isOwn,
-  tick: _tick,
   onComplete,
   onCancel,
 }: {
   item: QueueModel;
   isOwn: boolean;
-  tick: number;
   onComplete: () => void;
   onCancel: () => void;
 }) {
