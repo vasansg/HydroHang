@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, CalendarDays, Layers, Bell, User, Cloud, Cpu } from 'lucide-react';
+import { LayoutDashboard, CalendarDays, Layers, Bell, User, Cloud, Cpu, Wind } from 'lucide-react';
 import { clsx } from 'clsx';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -13,6 +13,7 @@ const NAV = [
   { href: '/dashboard',      label: 'Home',     icon: LayoutDashboard },
   { href: '/schedules',      label: 'Schedule', icon: CalendarDays },
   { href: '/queue',          label: 'Queue',    icon: Layers },
+  { href: '/dryers',         label: 'Dryers',   icon: Wind },
   { href: '/weather',        label: 'Weather',  icon: Cloud },
   { href: '/manual-control', label: 'Control',  icon: Cpu },
   { href: '/notifications',  label: 'Alerts',   icon: Bell },

@@ -9,6 +9,7 @@ import { ScheduleProvider } from '@/context/ScheduleContext';
 import { QueueProvider } from '@/context/QueueContext';
 import { WashingMachineProvider } from '@/context/WashingMachineContext';
 import { DryerProvider } from '@/context/DryerContext';
+import { DryerQueueProvider } from '@/context/DryerQueueContext';
 import { RainSensorProvider } from '@/context/RainSensorContext';
 import { WeatherProvider } from '@/context/WeatherContext';
 
@@ -28,11 +29,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <QueueProvider>
                   <WashingMachineProvider>
                     <DryerProvider>
+                      <DryerQueueProvider>
                       <RainSensorProvider>
                         <WeatherProvider>
                           {children}
                         </WeatherProvider>
                       </RainSensorProvider>
+                      </DryerQueueProvider>
                     </DryerProvider>
                   </WashingMachineProvider>
                 </QueueProvider>

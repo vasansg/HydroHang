@@ -15,6 +15,7 @@ import {
   Cloud,
   Cpu,
   Settings,
+  Wind,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { clsx } from 'clsx';
@@ -25,6 +26,7 @@ const NAV = [
   { href: '/dashboard',             label: 'Dashboard',           icon: LayoutDashboard },
   { href: '/schedules',             label: 'Schedules',            icon: CalendarDays },
   { href: '/queue',                 label: 'Queue',                icon: Layers },
+  { href: '/dryers',                label: 'Dryers',               icon: Wind },
   { href: '/weather',               label: 'Weather',              icon: Cloud },
   { href: '/manual-control',        label: 'Manual Control',       icon: Cpu },
   { href: '/badges',                label: 'Badges',               icon: Award },

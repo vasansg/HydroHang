@@ -94,6 +94,21 @@ export interface Dryer {
   familyCode: string;
 }
 
+export interface DryerQueueModel {
+  id: string;
+  userId: string;
+  userName: string;
+  familyCode: string;
+  startTime: Timestamp;
+  endTime?: Timestamp;
+  durationMinutes: number;
+  status: 'active' | 'waiting' | 'completed' | 'cancelled';
+  position: number;
+  dryerId: string;
+  dryerName: string;
+  pickupReminderSent?: boolean;
+}
+
 // ─── Laundry Activity ─────────────────────────────────────────────────────────
 
 export interface LaundryActivity {
