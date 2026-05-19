@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!firebaseReady || !auth || !db) {
+    if (!firebaseReady) {
       setLoading(false);
       return;
     }
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       try {
         if (firebaseUser) {
-          const snap = await getDoc(doc(db!, 'users', firebaseUser.uid));
+          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (snap.exists()) {
             setUserModel(snap.data() as UserModel);
           } else {
@@ -62,7 +62,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    if (!auth || !db) throw new Error('Firebase is not configured.');
     const cred = await signInWithEmailAndPassword(auth, email, password);
     const snap = await getDoc(doc(db, 'users', cred.user.uid));
     if (snap.exists()) setUserModel(snap.data() as UserModel);
@@ -75,7 +74,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     role: 'Primary' | 'Secondary',
     familyCode?: string
   ) => {
-    if (!auth || !db) throw new Error('Firebase is not configured.');
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     const uid = cred.user.uid;
 
@@ -104,12 +102,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
     };
 
-    await setDoc(doc(db!, 'users', uid), newUser);
+    await setDoc(doc(db, 'users', uid), newUser);
     setUserModel(newUser as UserModel);
   };
 
   const logout = async () => {
-    if (!auth) return;
     await signOut(auth);
     setUserModel(null);
   };

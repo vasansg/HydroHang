@@ -14,12 +14,8 @@ const firebaseConfig = {
 
 export const firebaseReady = !!process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
 
-const app = firebaseReady
-  ? getApps().length === 0
-    ? initializeApp(firebaseConfig)
-    : getApps()[0]
-  : null;
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-export const auth = app ? getAuth(app) : null;
-export const db = app ? getFirestore(app) : null;
+export const auth = getAuth(app);
+export const db = getFirestore(app);
 export default app;
