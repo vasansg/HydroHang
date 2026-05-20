@@ -9,13 +9,19 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function sameAuthenticatedFamily(userId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyCode ==
+        get(/databases/$(database)/documents/users/$(userId)).data.familyCode;
+    }
+
     match /users/{userId} {
       allow read, create, update, delete: if isSelf(userId);
 
       match /notifications/{notificationId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read, update, delete: if isSelf(userId);
+        allow create: if isSelf(userId) || sameAuthenticatedFamily(userId);
       }
     }
   }
 }
-

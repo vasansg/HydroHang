@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { QueueModel, QueueMessage } from '@/lib/types';
+import { triggerFamilyNotification } from './notification-service';
 
 const COLLECTION = 'washing_queue';
 
@@ -352,6 +353,14 @@ export async function sendQueueMessage({
     senderName,
     message,
     timestamp: Timestamp.now(),
+  });
+
+  await triggerFamilyNotification({
+    title: 'New machine message',
+    body: `${senderName} sent a message for ${data.washingMachineName}: '${message}'`,
+    type: 'Queue',
+    familyCode: data.familyCode as string,
+    excludeUid: senderId,
   });
 }
 

@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { DryerQueueModel, QueueMessage } from '@/lib/types';
+import { triggerFamilyNotification } from './notification-service';
 
 const COLLECTION = 'dryer_queue';
 
@@ -330,6 +331,14 @@ export async function sendDryerQueueMessage({
     senderName,
     message,
     timestamp: Timestamp.now(),
+  });
+
+  await triggerFamilyNotification({
+    title: 'New machine message',
+    body: `${senderName} sent a message for ${data.dryerName}: '${message}'`,
+    type: 'Queue',
+    familyCode: data.familyCode as string,
+    excludeUid: senderId,
   });
 }
 
