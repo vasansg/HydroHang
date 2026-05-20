@@ -66,6 +66,17 @@ service cloud.firestore {
       }
     }
 
+    match /dryer_queue/{queueId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read, create: if request.auth != null;
+      }
+    }
+
     match /gamification/{docId} {
       // Users can read their own gamification data; family members can read each other's
       allow read: if request.auth != null;

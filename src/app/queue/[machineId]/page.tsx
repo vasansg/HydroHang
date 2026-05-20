@@ -15,6 +15,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { sendQueueMessage } from '@/lib/services/queue-service';
 import { useAuth } from '@/context/AuthContext';
 import AppShell from '@/components/AppShell';
 import { QueueModel, QueueMessage, WashingMachine } from '@/lib/types';
@@ -273,11 +274,11 @@ export default function MachineDetailPage() {
     if (!text.trim() || !activeSession || !userModel) return;
     setSendingMsg(true);
     try {
-      await addDoc(collection(db, 'washing_queue', activeSession.id, 'messages'), {
+      await sendQueueMessage({
+        queueId: activeSession.id,
         senderId: uid,
         senderName: userModel.name,
         message: text.trim(),
-        timestamp: Timestamp.now(),
       });
     } finally {
       setSendingMsg(false);

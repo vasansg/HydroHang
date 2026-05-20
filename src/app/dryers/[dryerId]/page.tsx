@@ -18,6 +18,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import AppShell from '@/components/AppShell';
 import { DryerQueueModel, QueueMessage, Dryer } from '@/lib/types';
+import { sendDryerQueueMessage } from '@/lib/services/dryer-queue-service';
 import { format } from 'date-fns';
 import {
   ArrowLeft,
@@ -272,11 +273,11 @@ export default function DryerDetailPage() {
     if (!text.trim() || !activeSession || !userModel) return;
     setSendingMsg(true);
     try {
-      await addDoc(collection(db, 'dryer_queue', activeSession.id, 'messages'), {
+      await sendDryerQueueMessage({
+        queueId: activeSession.id,
         senderId: uid,
         senderName: userModel.name,
         message: text.trim(),
-        timestamp: Timestamp.now(),
       });
     } finally {
       setSendingMsg(false);
