@@ -37,7 +37,20 @@ import {
 import { clsx } from 'clsx';
 import Link from 'next/link';
 
-const DURATION_OPTIONS = [30, 45, 60, 90, 120];
+const DURATION_OPTIONS = [1, 5, 10, 15, 30, 60];
+
+function stepDown(v: number): number {
+  if (v <= 1)  return 1;
+  if (v <= 10) return v - 1;
+  if (v <= 30) return v - 5;
+  return Math.max(1, v - 15);
+}
+
+function stepUp(v: number): number {
+  if (v < 10)  return v + 1;
+  if (v < 30)  return v + 5;
+  return Math.min(240, v + 15);
+}
 
 const MACHINE_TIPS = [
   'Run heavy loads during off-peak hours to save energy.',
@@ -523,8 +536,9 @@ export default function MachineDetailPage() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setDurationMinutes((v) => Math.max(15, v - 15))}
-                  className="w-9 h-9 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors"
+                  onClick={() => setDurationMinutes((v) => stepDown(v))}
+                  disabled={durationMinutes <= 1}
+                  className="w-9 h-9 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Minus size={16} />
                 </button>
@@ -534,8 +548,9 @@ export default function MachineDetailPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setDurationMinutes((v) => Math.min(240, v + 15))}
-                  className="w-9 h-9 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors"
+                  onClick={() => setDurationMinutes((v) => stepUp(v))}
+                  disabled={durationMinutes >= 240}
+                  className="w-9 h-9 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <Plus size={16} />
                 </button>

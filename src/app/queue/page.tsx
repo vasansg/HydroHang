@@ -23,7 +23,20 @@ import {
 import Link from 'next/link';
 import { clsx } from 'clsx';
 
-const DURATION_OPTIONS = [30, 45, 60, 90, 120];
+const DURATION_OPTIONS = [1, 5, 10, 15, 30, 60];
+
+function stepDown(v: number): number {
+  if (v <= 1)  return 1;
+  if (v <= 10) return v - 1;
+  if (v <= 30) return v - 5;
+  return Math.max(1, v - 15);
+}
+
+function stepUp(v: number): number {
+  if (v < 10)  return v + 1;
+  if (v < 30)  return v + 5;
+  return Math.min(240, v + 15);
+}
 
 function formatRemainingTime(
   item: { status: string; startTime: Timestamp; durationMinutes: number }
@@ -559,22 +572,46 @@ export default function QueuePage() {
               </div>
               <div>
                 <label className="label">Duration</label>
-                <div className="flex gap-2 flex-wrap">
+                {/* Preset chips */}
+                <div className="flex gap-2 flex-wrap mb-3">
                   {DURATION_OPTIONS.map((d) => (
                     <button
                       key={d}
                       type="button"
                       onClick={() => setDryerDuration(d)}
                       className={clsx(
-                        'px-4 py-2 rounded-xl text-sm font-bold transition-all',
+                        'px-4 py-2 rounded-xl text-sm font-bold transition-all border',
                         dryerDuration === d
-                          ? 'bg-amber-600 text-white shadow-lg shadow-amber-500/30'
-                          : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-500/30'
+                          : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
                       )}
                     >
                       {d}m
                     </button>
                   ))}
+                </div>
+                {/* Custom stepper */}
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDryerDuration((v) => stepDown(v))}
+                    disabled={dryerDuration <= 1}
+                    className="w-9 h-9 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  >
+                    <span className="text-lg font-black leading-none">−</span>
+                  </button>
+                  <div className="flex-1 text-center py-2.5 rounded-xl bg-white/5 border border-white/10">
+                    <span className="text-lg font-black text-white">{dryerDuration}</span>
+                    <span className="text-white/40 text-sm ml-1">min</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDryerDuration((v) => stepUp(v))}
+                    disabled={dryerDuration >= 240}
+                    className="w-9 h-9 rounded-xl bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                  >
+                    <span className="text-lg font-black leading-none">+</span>
+                  </button>
                 </div>
               </div>
 
