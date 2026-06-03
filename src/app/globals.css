@@ -201,6 +201,25 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Daily check-in XP toast — floats up and fades out */
+@keyframes checkInToast {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.9); }
+  18%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  72%  { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.95); }
+}
+
+/* Badge unlock banner — slides down from top */
+@keyframes badgeSlideIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-100%) scale(0.9); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
 @keyframes familyCodeChar {
   0%   { opacity: 0; transform: translateY(10px) scale(0.85); }
   60%  { opacity: 1; transform: translateY(-2px) scale(1.04); }

@@ -4,33 +4,46 @@ import { useEffect, useState } from 'react';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { useGamification } from '@/context/GamificationContext';
 import AppShell from '@/components/AppShell';
-import { LaundrySchedule, QueueModel, GamificationData, getTier, getTierProgress, xpToNextTier, TIERS } from '@/lib/types';
+import DailyCheckIn from '@/components/DailyCheckIn';
+import BadgeUnlockBanner from '@/components/BadgeUnlockBanner';
+import {
+  LaundrySchedule, QueueModel, getTier, getTierProgress, xpToNextTier, TIERS,
+} from '@/lib/types';
 import { format } from 'date-fns';
 import { CalendarDays, Layers, Zap, Flame, Award, Clock, TrendingUp, Copy, Check } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export default function DashboardPage() {
   const { userModel } = useAuth();
+  const gami = useGamification();
+
   const [schedules, setSchedules] = useState<LaundrySchedule[]>([]);
   const [queue, setQueue] = useState<QueueModel[]>([]);
-  const [gamification, setGamification] = useState<GamificationData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   const familyCode = userModel?.familyCode ?? '';
   const uid = userModel?.uid ?? '';
 
+  // Load gamification via context (shared, avoids duplicate reads)
+  useEffect(() => {
+    if (uid) gami.load(uid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
   useEffect(() => {
     if (!familyCode || !uid) return;
 
+    // Upcoming schedules
     const fetchSchedules = async () => {
       try {
         const q = query(collection(db, 'laundry_schedules'), where('familyCode', '==', familyCode));
         const snap = await getDocs(q);
         const pending = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as LaundrySchedule))
-          .filter((s) => s.status === 'Pending')
+          .map(d => ({ id: d.id, ...d.data() } as LaundrySchedule))
+          .filter(s => s.status === 'Pending')
           .sort((a, b) => a.scheduledDate.toMillis() - b.scheduledDate.toMillis())
           .slice(0, 5);
         setSchedules(pending);
@@ -38,30 +51,27 @@ export default function DashboardPage() {
     };
     fetchSchedules();
 
+    // Live queue
     const queueQuery = query(collection(db, 'washing_queue'), where('familyCode', '==', familyCode));
     const unsubQueue = onSnapshot(
       queueQuery,
-      (snap) => {
+      snap => {
         const items = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as QueueModel))
-          .filter((item) => ['active', 'waiting'].includes(item.status))
+          .map(d => ({ id: d.id, ...d.data() } as QueueModel))
+          .filter(item => ['active', 'waiting'].includes(item.status))
           .sort((a, b) => a.position - b.position);
         setQueue(items);
+        setLoading(false);
       },
-      () => setQueue([])
+      () => { setQueue([]); setLoading(false); }
     );
-
-    const fetchGami = async () => {
-      const snap = await getDocs(query(collection(db, 'gamification'), where('userId', '==', uid)));
-      if (!snap.empty) setGamification(snap.docs[0].data() as GamificationData);
-      setLoading(false);
-    };
-    fetchGami();
 
     return () => unsubQueue();
   }, [familyCode, uid]);
 
+  const gamification = gami.data;
   const tier = gamification ? getTier(gamification.totalXp) : null;
+
   const greeting = (() => {
     const h = new Date().getHours();
     if (h < 12) return 'Good morning';
@@ -77,6 +87,9 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
+      {/* Badge unlock notification — global, above everything */}
+      <BadgeUnlockBanner />
+
       <div className="max-w-5xl mx-auto space-y-7">
 
         {/* ── Hero header ── */}
@@ -109,30 +122,10 @@ export default function DashboardPage() {
 
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <PremiumStatCard
-            icon={<Zap size={19} className="text-yellow-400" />}
-            label="Total XP"
-            value={loading ? '—' : (gamification?.totalXp.toLocaleString() ?? '0')}
-            accent="#EAB308"
-          />
-          <PremiumStatCard
-            icon={<Flame size={19} className="text-orange-400" />}
-            label="Day Streak"
-            value={loading ? '—' : `${gamification?.currentStreak ?? 0}d`}
-            accent="#F97316"
-          />
-          <PremiumStatCard
-            icon={<Award size={19} className="text-violet-400" />}
-            label="Badges"
-            value={loading ? '—' : `${gamification?.earnedBadgeIds.length ?? 0}`}
-            accent="#8B5CF6"
-          />
-          <PremiumStatCard
-            icon={<Layers size={19} className="text-cyan-400" />}
-            label="In Queue"
-            value={queue.length.toString()}
-            accent="#06B6D4"
-          />
+          <PremiumStatCard icon={<Zap size={19} className="text-yellow-400" />} label="Total XP" value={gami.loading ? '—' : (gamification?.totalXp.toLocaleString() ?? '0')} accent="#EAB308" />
+          <PremiumStatCard icon={<Flame size={19} className="text-orange-400" />} label="Day Streak" value={gami.loading ? '—' : `${gamification?.currentStreak ?? 0}d`} accent="#F97316" />
+          <PremiumStatCard icon={<Award size={19} className="text-violet-400" />} label="Badges" value={gami.loading ? '—' : `${gamification?.earnedBadgeIds.length ?? 0}`} accent="#8B5CF6" />
+          <PremiumStatCard icon={<Layers size={19} className="text-cyan-400" />} label="In Queue" value={queue.length.toString()} accent="#06B6D4" />
         </div>
 
         {/* ── XP Progress ── */}
@@ -140,9 +133,14 @@ export default function DashboardPage() {
           <XpProgressCard gamification={gamification} tier={tier} />
         )}
 
-        {/* ── Active queue + upcoming schedules ── */}
+        {/* ── Daily check-in + Queue/Schedules row ── */}
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Queue */}
+          {/* Daily check-in */}
+          {uid && (
+            <DailyCheckIn uid={uid} />
+          )}
+
+          {/* Active queue */}
           <div className="card">
             <div className="flex items-center gap-2.5 mb-5">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-500/15 border border-cyan-500/20">
@@ -157,25 +155,25 @@ export default function DashboardPage() {
             </div>
             {loading ? <SkeletonRows rows={3} /> : queue.length === 0 ? <EmptyState label="No active queue entries" /> : (
               <div className="space-y-2.5">
-                {queue.map((q) => <QueueItem key={q.id} item={q} currentUid={uid} />)}
+                {queue.map(q => <QueueItem key={q.id} item={q} currentUid={uid} />)}
               </div>
             )}
           </div>
+        </div>
 
-          {/* Upcoming schedules */}
-          <div className="card">
-            <div className="flex items-center gap-2.5 mb-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/20">
-                <CalendarDays size={15} className="text-emerald-400" />
-              </div>
-              <h2 className="font-black">Upcoming Schedules</h2>
+        {/* ── Upcoming Schedules ── */}
+        <div className="card">
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/15 border border-emerald-500/20">
+              <CalendarDays size={15} className="text-emerald-400" />
             </div>
-            {loading ? <SkeletonRows rows={3} /> : schedules.length === 0 ? <EmptyState label="No upcoming schedules" /> : (
-              <div className="space-y-2.5">
-                {schedules.map((s) => <ScheduleItem key={s.id} schedule={s} currentUid={uid} />)}
-              </div>
-            )}
+            <h2 className="font-black">Upcoming Schedules</h2>
           </div>
+          {loading ? <SkeletonRows rows={3} /> : schedules.length === 0 ? <EmptyState label="No upcoming schedules" /> : (
+            <div className="space-y-2.5">
+              {schedules.map(s => <ScheduleItem key={s.id} schedule={s} currentUid={uid} />)}
+            </div>
+          )}
         </div>
 
         {/* ── Family code ── */}
@@ -187,10 +185,7 @@ export default function DashboardPage() {
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35 mb-2">Family Access Code</p>
                 <div className="flex items-center gap-1.5">
                   {familyCode.split('').map((char, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex h-10 w-9 items-center justify-center rounded-xl bg-white/[0.07] border border-white/[0.1] text-xl font-black gradient-text"
-                    >
+                    <span key={i} className="inline-flex h-10 w-9 items-center justify-center rounded-xl bg-white/[0.07] border border-white/[0.1] text-xl font-black gradient-text">
                       {char}
                     </span>
                   ))}
@@ -201,9 +196,7 @@ export default function DashboardPage() {
                 onClick={copyCode}
                 className={clsx(
                   'flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all duration-200 active:scale-95',
-                  copied
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
-                    : 'bg-violet-500/15 text-violet-300 border border-violet-500/25 hover:bg-violet-500/25'
+                  copied ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25' : 'bg-violet-500/15 text-violet-300 border border-violet-500/25 hover:bg-violet-500/25'
                 )}
               >
                 {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -217,18 +210,12 @@ export default function DashboardPage() {
   );
 }
 
-// ── Premium Stat Card ─────────────────────────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function PremiumStatCard({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: string; accent: string }) {
   return (
-    <div
-      className="group relative overflow-hidden rounded-2xl border bg-white/[0.04] p-5 transition-all duration-300 hover:-translate-y-0.5 backdrop-blur-sm"
-      style={{ borderColor: `${accent}25` }}
-    >
-      <div
-        className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{ background: `radial-gradient(ellipse at top left, ${accent}10, transparent 70%)` }}
-      />
+    <div className="group relative overflow-hidden rounded-2xl border bg-white/[0.04] p-5 transition-all duration-300 hover:-translate-y-0.5 backdrop-blur-sm" style={{ borderColor: `${accent}25` }}>
+      <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: `radial-gradient(ellipse at top left, ${accent}10, transparent 70%)` }} />
       <div className="mb-3.5">{icon}</div>
       <p className="text-2xl font-black leading-none mb-1">{value}</p>
       <p className="text-white/35 text-xs font-bold uppercase tracking-wider">{label}</p>
@@ -236,9 +223,7 @@ function PremiumStatCard({ icon, label, value, accent }: { icon: React.ReactNode
   );
 }
 
-// ── XP Progress Card ──────────────────────────────────────────────────────────
-
-function XpProgressCard({ gamification, tier }: { gamification: GamificationData; tier: ReturnType<typeof getTier> }) {
+function XpProgressCard({ gamification, tier }: { gamification: { totalXp: number }; tier: ReturnType<typeof getTier> }) {
   const progress = getTierProgress(gamification.totalXp) * 100;
   const toNext = xpToNextTier(gamification.totalXp);
   const tierIndex = TIERS.findIndex(t => t.name === tier.name);
@@ -264,53 +249,27 @@ function XpProgressCard({ gamification, tier }: { gamification: GamificationData
       {/* Tier track */}
       <div className="flex items-center gap-1.5 mb-3">
         {TIERS.map((t, i) => (
-          <div
-            key={t.name}
-            className={clsx(
-              'flex-1 flex flex-col items-center gap-1',
-              i <= tierIndex ? 'opacity-100' : 'opacity-30'
-            )}
-          >
-            <div
-              className="h-1.5 w-full rounded-full"
-              style={{ background: i <= tierIndex ? `linear-gradient(90deg, ${t.color}, ${t.color}80)` : 'rgba(255,255,255,0.1)' }}
-            />
+          <div key={t.name} className={clsx('flex-1 flex flex-col items-center gap-1', i <= tierIndex ? 'opacity-100' : 'opacity-30')}>
+            <div className="h-1.5 w-full rounded-full" style={{ background: i <= tierIndex ? `linear-gradient(90deg, ${t.color}, ${t.color}80)` : 'rgba(255,255,255,0.1)' }} />
             <span className="text-[9px] text-white/30 font-bold hidden sm:block">{t.emoji}</span>
           </div>
         ))}
       </div>
 
-      {/* XP Bar */}
+      {/* XP bar */}
       <div className="h-3 bg-white/[0.07] rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{
-            width: `${Math.min(progress, 100)}%`,
-            background: `linear-gradient(90deg, ${tier.color}, ${tier.color}99)`,
-            boxShadow: `0 0 10px ${tier.color}50`,
-          }}
-        />
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.min(progress, 100)}%`, background: `linear-gradient(90deg, ${tier.color}, ${tier.color}99)`, boxShadow: `0 0 10px ${tier.color}50` }} />
       </div>
     </div>
   );
 }
 
-// ── Queue Item ────────────────────────────────────────────────────────────────
-
 function QueueItem({ item, currentUid }: { item: QueueModel; currentUid: string }) {
   const isMe = item.userId === currentUid;
   const isActive = item.status === 'active';
   return (
-    <div className={clsx(
-      'flex items-center gap-3 p-3.5 rounded-2xl border transition-all',
-      isMe
-        ? 'bg-violet-500/[0.08] border-violet-500/20'
-        : 'bg-white/[0.03] border-white/[0.06]'
-    )}>
-      <div className={clsx(
-        'flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black border',
-        isActive ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border-amber-500/20'
-      )}>
+    <div className={clsx('flex items-center gap-3 p-3.5 rounded-2xl border transition-all', isMe ? 'bg-violet-500/[0.08] border-violet-500/20' : 'bg-white/[0.03] border-white/[0.06]')}>
+      <div className={clsx('flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-black border', isActive ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/15 text-amber-400 border-amber-500/20')}>
         {item.position}
       </div>
       <div className="flex-1 min-w-0">
@@ -322,26 +281,17 @@ function QueueItem({ item, currentUid }: { item: QueueModel; currentUid: string 
       </div>
       <div className="text-right shrink-0">
         <p className={clsx('text-xs font-black capitalize', isActive ? 'text-emerald-400' : 'text-amber-400')}>{item.status}</p>
-        <p className="text-[10px] text-white/25 flex items-center gap-1 mt-0.5 justify-end">
-          <Clock size={9} /> {item.durationMinutes}m
-        </p>
+        <p className="text-[10px] text-white/25 flex items-center gap-1 mt-0.5 justify-end"><Clock size={9} /> {item.durationMinutes}m</p>
       </div>
     </div>
   );
 }
 
-// ── Schedule Item ─────────────────────────────────────────────────────────────
-
 function ScheduleItem({ schedule, currentUid }: { schedule: LaundrySchedule; currentUid: string }) {
   const isMe = schedule.userId === currentUid;
   const date = schedule.scheduledDate.toDate();
   return (
-    <div className={clsx(
-      'flex items-center gap-3 p-3.5 rounded-2xl border transition-all',
-      isMe
-        ? 'bg-emerald-500/[0.06] border-emerald-500/20'
-        : 'bg-white/[0.03] border-white/[0.06]'
-    )}>
+    <div className={clsx('flex items-center gap-3 p-3.5 rounded-2xl border transition-all', isMe ? 'bg-emerald-500/[0.06] border-emerald-500/20' : 'bg-white/[0.03] border-white/[0.06]')}>
       <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-white/[0.05] border border-white/[0.08]">
         <p className="text-[10px] text-white/35 font-bold uppercase leading-none">{format(date, 'MMM')}</p>
         <p className="text-xl font-black leading-tight">{format(date, 'd')}</p>
@@ -358,9 +308,7 @@ function ScheduleItem({ schedule, currentUid }: { schedule: LaundrySchedule; cur
 function SkeletonRows({ rows }: { rows: number }) {
   return (
     <div className="space-y-2.5">
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="h-14 bg-white/[0.04] rounded-2xl animate-pulse" />
-      ))}
+      {Array.from({ length: rows }).map((_, i) => <div key={i} className="h-14 bg-white/[0.04] rounded-2xl animate-pulse" />)}
     </div>
   );
 }
