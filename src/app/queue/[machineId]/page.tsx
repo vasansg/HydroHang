@@ -13,6 +13,7 @@ import {
   getDocs,
   orderBy,
   Timestamp,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendQueueMessage } from '@/lib/services/queue-service';
@@ -91,6 +92,60 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
+// ─── Auto-complete helper (mirrors Flutter Cloud Function logic) ──────────────
+// Runs inside the 1-second interval; uses a transaction to avoid race conditions.
+
+function autoCompleteExpired(
+  queue: QueueModel[],
+  completedSet: Set<string>,
+  collection_: string,
+  machineIdField: 'washingMachineId'
+): void {
+  const now = Date.now();
+  for (const item of queue) {
+    if (item.status !== 'active') continue;
+    if (completedSet.has(item.id)) continue;
+    const endTs = item.endTime as Timestamp | undefined;
+    if (!endTs || typeof endTs.toDate !== 'function') continue;
+    if (now < endTs.toDate().getTime()) continue;
+
+    completedSet.add(item.id);
+
+    const sessionRef = doc(db, collection_, item.id);
+    const machineId = (item as QueueModel)[machineIdField];
+
+    void runTransaction(db, async (tx) => {
+      const snap = await tx.get(sessionRef);
+      if (!snap.exists() || snap.data().status !== 'active') return;
+
+      tx.update(sessionRef, { status: 'completed', endTime: Timestamp.now() });
+
+      // Activate next waiting person (same logic as Cloud Function activateNextInQueue)
+      const nextWaiting = queue
+        .filter(q => q.status === 'waiting' && (q as QueueModel)[machineIdField] === machineId)
+        .sort((a, b) => {
+          const aMs = (a.startTime as Timestamp).toDate().getTime();
+          const bMs = (b.startTime as Timestamp).toDate().getTime();
+          return aMs - bMs;
+        })[0];
+
+      if (nextWaiting) {
+        const activateNow = Date.now();
+        tx.update(doc(db, collection_, nextWaiting.id), {
+          status: 'active',
+          startTime: Timestamp.fromMillis(activateNow),
+          endTime: Timestamp.fromMillis(activateNow + nextWaiting.durationMinutes * 60 * 1000),
+          position: 0,
+          pickupReminderSent: false,
+        });
+      }
+    }).catch((err: unknown) => {
+      completedSet.delete(item.id); // allow retry
+      console.error('Auto-complete tx error:', err);
+    });
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MachineDetailPage() {
@@ -105,6 +160,8 @@ export default function MachineDetailPage() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const machineQueueRef = useRef<QueueModel[]>([]);
+  const autoCompletedRef = useRef(new Set<string>());
 
   // Chat state
   const [messages, setMessages] = useState<QueueMessage[]>([]);
@@ -127,9 +184,12 @@ export default function MachineDetailPage() {
   const activeSession = machineQueue.find((q) => q.status === 'active');
   const isFree = !activeSession;
 
-  // 1-second tick
+  // 1-second tick + auto-complete expired sessions (mirrors Cloud Function logic)
   useEffect(() => {
-    timerRef.current = setInterval(() => setTick((t) => t + 1), 1000);
+    timerRef.current = setInterval(() => {
+      setTick((t) => t + 1);
+      autoCompleteExpired(machineQueueRef.current, autoCompletedRef.current, 'washing_queue', 'washingMachineId');
+    }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
@@ -146,7 +206,7 @@ export default function MachineDetailPage() {
     return unsub;
   }, [machineId]);
 
-  // Real-time queue for this machine
+  // Real-time queue for this machine — keep ref in sync too
   useEffect(() => {
     if (!familyCode || !machineId) return;
     const q = query(
@@ -159,6 +219,7 @@ export default function MachineDetailPage() {
         .map((d) => ({ id: d.id, ...d.data() } as QueueModel))
         .sort((a, b) => a.position - b.position);
       setMachineQueue(items);
+      machineQueueRef.current = items;
     });
     return unsub;
   }, [familyCode, machineId]);
@@ -207,8 +268,10 @@ export default function MachineDetailPage() {
     setJoining(true);
     setJoinError(null);
     try {
-      const position = activeAndWaiting.length + 1;
-      const status = position === 1 ? 'active' : 'waiting';
+      // Position 0 = active (matches Flutter's bookWashingMachine); length+1 for waiting
+      const isFirst = activeAndWaiting.length === 0;
+      const position = isFirst ? 0 : activeAndWaiting.length + 1;
+      const status: 'active' | 'waiting' = isFirst ? 'active' : 'waiting';
       const startTs = Timestamp.now();
       const endTs = Timestamp.fromMillis(Date.now() + durationMinutes * 60 * 1000);
       await addDoc(collection(db, 'washing_queue'), {
@@ -216,7 +279,7 @@ export default function MachineDetailPage() {
         userName: userModel.name,
         familyCode,
         startTime: startTs,
-        endTime: endTs,
+        endTime: status === 'active' ? endTs : null,
         durationMinutes,
         durationHours: Math.ceil(durationMinutes / 60),
         status,
@@ -305,11 +368,43 @@ export default function MachineDetailPage() {
   };
 
   const handleComplete = async (id: string) => {
+    const item = machineQueue.find((q) => q.id === id);
     await updateDoc(doc(db, 'washing_queue', id), { status: 'completed', endTime: Timestamp.now() });
+    if (item?.status === 'active') {
+      const next = machineQueue
+        .filter((q) => q.status === 'waiting' && q.washingMachineId === item.washingMachineId)
+        .sort((a, b) => a.startTime.toDate().getTime() - b.startTime.toDate().getTime())[0];
+      if (next) {
+        const now = Date.now();
+        await updateDoc(doc(db, 'washing_queue', next.id), {
+          status: 'active',
+          startTime: Timestamp.fromMillis(now),
+          endTime: Timestamp.fromMillis(now + next.durationMinutes * 60 * 1000),
+          position: 0,
+          pickupReminderSent: false,
+        });
+      }
+    }
   };
 
   const handleCancel = async (id: string) => {
+    const item = machineQueue.find((q) => q.id === id);
     await updateDoc(doc(db, 'washing_queue', id), { status: 'cancelled', endTime: Timestamp.now() });
+    if (item?.status === 'active') {
+      const next = machineQueue
+        .filter((q) => q.status === 'waiting' && q.washingMachineId === item.washingMachineId)
+        .sort((a, b) => a.startTime.toDate().getTime() - b.startTime.toDate().getTime())[0];
+      if (next) {
+        const now = Date.now();
+        await updateDoc(doc(db, 'washing_queue', next.id), {
+          status: 'active',
+          startTime: Timestamp.fromMillis(now),
+          endTime: Timestamp.fromMillis(now + next.durationMinutes * 60 * 1000),
+          position: 0,
+          pickupReminderSent: false,
+        });
+      }
+    }
   };
 
   if (!machine) {
