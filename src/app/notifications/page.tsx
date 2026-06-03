@@ -2,51 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import {
-  collection,
-  query,
-  orderBy,
-  onSnapshot,
-  updateDoc,
-  deleteDoc,
-  doc,
-  writeBatch,
-  where,
-  getDocs,
+  collection, query, orderBy, onSnapshot, updateDoc, deleteDoc,
+  doc, writeBatch, where, getDocs,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import AppShell from '@/components/AppShell';
 import { AppNotification } from '@/lib/types';
 import { format, isToday, isYesterday } from 'date-fns';
-import {
-  Bell,
-  Trash2,
-  CheckCheck,
-  Cloud,
-  Users,
-  Calendar,
-  Settings,
-  Loader2,
-} from 'lucide-react';
+import { Bell, Trash2, CheckCheck, Cloud, Users, Calendar, Settings, Loader2 } from 'lucide-react';
 import { clsx } from 'clsx';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function typeIcon(type: string) {
+function typeConfig(type: string) {
   switch (type) {
-    case 'Rain':     return <Cloud size={15} className="text-sky-400" />;
-    case 'Queue':    return <Users size={15} className="text-indigo-400" />;
-    case 'Schedule': return <Calendar size={15} className="text-violet-400" />;
-    default:         return <Settings size={15} className="text-white/40" />;
-  }
-}
-
-function typeBg(type: string): string {
-  switch (type) {
-    case 'Rain':     return 'bg-sky-500/15 border-sky-500/20';
-    case 'Queue':    return 'bg-indigo-500/15 border-indigo-500/20';
-    case 'Schedule': return 'bg-violet-500/15 border-violet-500/20';
-    default:         return 'bg-white/5 border-white/10';
+    case 'Rain':     return { icon: <Cloud size={15} />, color: 'text-sky-400', bg: 'bg-sky-500/15 border-sky-500/20', iconBg: 'bg-sky-500/15', accent: '#0EA5E9' };
+    case 'Queue':    return { icon: <Users size={15} />, color: 'text-indigo-400', bg: 'bg-indigo-500/15 border-indigo-500/20', iconBg: 'bg-indigo-500/15', accent: '#6366F1' };
+    case 'Schedule': return { icon: <Calendar size={15} />, color: 'text-violet-400', bg: 'bg-violet-500/15 border-violet-500/20', iconBg: 'bg-violet-500/15', accent: '#8B5CF6' };
+    default:         return { icon: <Settings size={15} />, color: 'text-white/40', bg: 'bg-white/5 border-white/8', iconBg: 'bg-white/8', accent: '#6B7280' };
   }
 }
 
@@ -58,92 +30,46 @@ function toSafeDate(ts: AppNotification['timestamp'] | undefined): Date | null {
 function formatTs(ts: AppNotification['timestamp']): string {
   const d = toSafeDate(ts);
   if (!d) return 'Unknown time';
-  if (isToday(d)) return `Today ${format(d, 'h:mm a')}`;
-  if (isYesterday(d)) return `Yesterday ${format(d, 'h:mm a')}`;
+  if (isToday(d)) return `Today · ${format(d, 'h:mm a')}`;
+  if (isYesterday(d)) return `Yesterday · ${format(d, 'h:mm a')}`;
   return format(d, 'd MMM · h:mm a');
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
   const { userModel, loading: authLoading } = useAuth();
   const uid = userModel?.uid ?? '';
-
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [markingAll, setMarkingAll] = useState(false);
 
-  // Real-time listener
   useEffect(() => {
     if (authLoading) return;
-
-    if (!uid) {
-      setNotifications([]);
-      setLoading(false);
-      return;
-    }
+    if (!uid) { setNotifications([]); setLoading(false); return; }
 
     setLoading(true);
-    setError(null);
-
     const notificationsRef = collection(db, 'users', uid, 'notifications');
     const orderedQuery = query(notificationsRef, orderBy('timestamp', 'desc'));
-
     let unsubFallback: (() => void) | undefined;
 
     const unsubPrimary = onSnapshot(
       orderedQuery,
-      (snap) => {
-        setNotifications(
-          snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification))
-        );
-        setLoading(false);
-      },
-      (snapshotError: { code?: string; message?: string }) => {
-        if (snapshotError.code === 'failed-precondition') {
-          // Fallback avoids index dependency and sorts in-memory.
-          unsubFallback = onSnapshot(
-            notificationsRef,
-            (snap) => {
-              const mapped = snap.docs.map((d) => ({
-                id: d.id,
-                ...d.data(),
-              } as AppNotification));
-              mapped.sort((a, b) => {
-                const aMs = toSafeDate(a.timestamp)?.getTime() ?? 0;
-                const bMs = toSafeDate(b.timestamp)?.getTime() ?? 0;
-                return bMs - aMs;
-              });
-              setNotifications(mapped);
-              setError('Notifications loaded with fallback sorting. Add Firestore index for best performance.');
-              setLoading(false);
-            },
-            (fallbackError: { code?: string; message?: string }) => {
-              if (fallbackError.code === 'permission-denied') {
-                setError('Access denied. Please check Firestore rules for notifications.');
-              } else {
-                setError(fallbackError.message ?? 'Failed to load notifications.');
-              }
-              setLoading(false);
-            }
-          );
+      (snap) => { setNotifications(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification))); setLoading(false); },
+      (err: { code?: string; message?: string }) => {
+        if (err.code === 'failed-precondition') {
+          unsubFallback = onSnapshot(notificationsRef, (snap) => {
+            const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AppNotification));
+            mapped.sort((a, b) => (toSafeDate(b.timestamp)?.getTime() ?? 0) - (toSafeDate(a.timestamp)?.getTime() ?? 0));
+            setNotifications(mapped);
+            setLoading(false);
+          }, (fe: { message?: string }) => { setError(fe.message ?? 'Failed to load'); setLoading(false); });
           return;
         }
-
-        if (snapshotError.code === 'permission-denied') {
-          setError('Access denied. Please check Firestore rules for notifications.');
-        } else {
-          setError(snapshotError.message ?? 'Failed to load notifications.');
-        }
+        setError(err.message ?? 'Failed to load notifications.');
         setLoading(false);
       }
     );
-
-    return () => {
-      unsubPrimary();
-      if (unsubFallback) unsubFallback();
-    };
+    return () => { unsubPrimary(); unsubFallback?.(); };
   }, [uid, authLoading]);
 
   const markAsRead = async (id: string) => {
@@ -160,50 +86,41 @@ export default function NotificationsPage() {
     if (!uid) return;
     setMarkingAll(true);
     try {
-      const snap = await getDocs(
-        query(
-          collection(db, 'users', uid, 'notifications'),
-          where('isRead', '==', false)
-        )
-      );
+      const snap = await getDocs(query(collection(db, 'users', uid, 'notifications'), where('isRead', '==', false)));
       const batch = writeBatch(db);
       snap.docs.forEach((d) => batch.update(d.ref, { isRead: true }));
       await batch.commit();
-    } finally {
-      setMarkingAll(false);
-    }
+    } finally { setMarkingAll(false); }
   };
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
-  // Group by date
   const groups: Record<string, AppNotification[]> = {};
   notifications.forEach((n) => {
     const d = toSafeDate(n.timestamp);
-    const key = !d
-      ? 'Unknown date'
-      : isToday(d)
-      ? 'Today'
-      : isYesterday(d)
-      ? 'Yesterday'
-      : format(d, 'MMMM d, yyyy');
+    const key = !d ? 'Unknown' : isToday(d) ? 'Today' : isYesterday(d) ? 'Yesterday' : format(d, 'MMMM d, yyyy');
     (groups[key] ??= []).push(n);
   });
 
   return (
     <AppShell>
-      <div className="max-w-2xl mx-auto px-4 py-8 space-y-5">
+      <div className="max-w-2xl mx-auto space-y-6">
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
-              <Bell size={19} className="text-indigo-400" />
+            <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500/20 to-violet-500/10 border border-indigo-500/20">
+              <Bell size={20} className="text-indigo-400" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </div>
             <div>
-              <h1 className="text-xl font-black tracking-tight">Notifications</h1>
-              <p className="text-white/40 text-xs mt-0.5">
-                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+              <h1 className="text-2xl font-black">Notifications</h1>
+              <p className="text-white/35 text-xs font-semibold mt-0.5">
+                {unreadCount > 0 ? `${unreadCount} unread` : 'All caught up ✓'}
               </p>
             </div>
           </div>
@@ -212,135 +129,111 @@ export default function NotificationsPage() {
             <button
               onClick={markAllRead}
               disabled={markingAll}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600/80 hover:bg-indigo-600 text-white text-xs font-black transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-500/20"
             >
-              {markingAll
-                ? <Loader2 size={13} className="animate-spin" />
-                : <CheckCheck size={13} />}
+              {markingAll ? <Loader2 size={13} className="animate-spin" /> : <CheckCheck size={13} />}
               Mark all read
             </button>
           )}
         </div>
 
-        {/* Stats strip */}
-        <div className="grid grid-cols-3 gap-2">
+        {/* ── Stats strip ── */}
+        <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Total',  value: notifications.length,  color: 'text-white' },
-            { label: 'Unread', value: unreadCount,            color: 'text-indigo-400' },
-            { label: 'Read',   value: notifications.length - unreadCount, color: 'text-green-400' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="bg-surface border border-white/8 rounded-2xl px-4 py-3 text-center">
-              <p className={clsx('text-2xl font-black', color)}>{value}</p>
-              <p className="text-[11px] text-white/40 font-bold mt-0.5 uppercase tracking-wider">{label}</p>
+            { label: 'Total', value: notifications.length, colorClass: 'text-white' },
+            { label: 'Unread', value: unreadCount, colorClass: 'text-indigo-400' },
+            { label: 'Read', value: notifications.length - unreadCount, colorClass: 'text-emerald-400' },
+          ].map(({ label, value, colorClass }) => (
+            <div key={label} className="flex flex-col items-center py-4 rounded-2xl bg-white/[0.04] border border-white/[0.07]">
+              <p className={clsx('text-2xl font-black', colorClass)}>{value}</p>
+              <p className="text-[10px] text-white/30 font-black uppercase tracking-wider mt-0.5">{label}</p>
             </div>
           ))}
         </div>
 
-        {/* Content */}
         {error && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-300 font-medium">
             {error}
           </div>
         )}
 
+        {/* ── Content ── */}
         {loading ? (
-          <div className="flex justify-center py-16">
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
             <Loader2 size={28} className="animate-spin text-indigo-400" />
+            <p className="text-white/30 text-sm font-medium">Loading notifications…</p>
           </div>
         ) : notifications.length === 0 ? (
-          <div className="text-center py-16 space-y-3">
-            <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto">
-              <Bell size={28} className="text-white/20" />
+          <div className="text-center py-20 space-y-4">
+            <div className="relative mx-auto w-20 h-20">
+              <div className="absolute inset-0 rounded-full bg-white/5 blur-xl" />
+              <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-white/[0.04] border border-white/[0.07]">
+                <Bell size={30} className="text-white/15" />
+              </div>
             </div>
-            <p className="font-bold text-white/40">No notifications yet</p>
-            <p className="text-sm text-white/25">You&apos;ll see queue updates, reminders and alerts here</p>
+            <p className="font-black text-white/30 text-lg">No notifications yet</p>
+            <p className="text-sm text-white/20 font-medium">Queue updates, reminders and alerts will appear here</p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-7">
             {Object.entries(groups).map(([dateLabel, items]) => (
               <div key={dateLabel} className="space-y-2">
-                {/* Date group header */}
-                <p className="text-[11px] font-black text-white/30 uppercase tracking-[2px] px-1">{dateLabel}</p>
+                <p className="text-[10px] font-black text-white/25 uppercase tracking-[0.2em] px-1">{dateLabel}</p>
+                {items.map((n, idx) => {
+                  const cfg = typeConfig(n.type);
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={() => !n.isRead && markAsRead(n.id)}
+                      className={clsx(
+                        'group relative overflow-hidden rounded-2xl border px-4 py-4 transition-all duration-200 cursor-pointer hover:bg-white/[0.03]',
+                        n.isRead ? 'bg-white/[0.02] border-white/[0.06] opacity-60' : clsx('border', cfg.bg)
+                      )}
+                      style={{ animation: `fadeInUp 0.35s ease ${idx * 50}ms both` }}
+                    >
+                      {/* Left accent line */}
+                      {!n.isRead && (
+                        <div className="absolute left-0 top-3 bottom-3 w-0.5 rounded-full" style={{ background: cfg.accent }} />
+                      )}
 
-                {items.map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => !n.isRead && markAsRead(n.id)}
-                    className={clsx(
-                      'rounded-2xl border px-4 py-3.5 transition-all cursor-pointer group',
-                      n.isRead
-                        ? 'bg-white/2 border-white/6 opacity-70'
-                        : clsx('border', typeBg(n.type))
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Type icon */}
-                      <div className={clsx(
-                        'w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5',
-                        n.isRead ? 'bg-white/5' : (() => {
-                          switch (n.type) {
-                            case 'Rain':     return 'bg-sky-500/20';
-                            case 'Queue':    return 'bg-indigo-500/20';
-                            case 'Schedule': return 'bg-violet-500/20';
-                            default:         return 'bg-white/8';
-                          }
-                        })()
-                      )}>
-                        {typeIcon(n.type)}
-                      </div>
+                      <div className="flex items-start gap-3">
+                        <div className={clsx('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl mt-0.5', cfg.iconBg, cfg.color)}>
+                          {cfg.icon}
+                        </div>
 
-                      {/* Body */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className={clsx(
-                            'font-bold text-sm leading-snug',
-                            n.isRead ? 'text-white/50' : 'text-white'
-                          )}>
-                            {n.title}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className={clsx('font-bold text-sm leading-snug', n.isRead ? 'text-white/45' : 'text-white')}>
+                              {n.title}
+                            </p>
+                            {!n.isRead && (
+                              <span className="h-2 w-2 rounded-full shrink-0 mt-1.5" style={{ background: cfg.accent }} />
+                            )}
+                          </div>
+                          <p className={clsx('text-sm mt-1 leading-relaxed', n.isRead ? 'text-white/25' : 'text-white/55')}>
+                            {n.body}
                           </p>
-                          {/* Unread dot */}
-                          {!n.isRead && (
-                            <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0 mt-1.5" />
-                          )}
+                          <div className="flex items-center gap-2 mt-2.5">
+                            <span
+                              className={clsx('text-[10px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wide', cfg.color)}
+                              style={{ background: `${cfg.accent}15`, borderColor: `${cfg.accent}25` }}
+                            >
+                              {n.type}
+                            </span>
+                            <span className="text-[10px] text-white/22 font-semibold">{formatTs(n.timestamp)}</span>
+                          </div>
                         </div>
-                        <p className={clsx(
-                          'text-sm mt-0.5 leading-relaxed',
-                          n.isRead ? 'text-white/30' : 'text-white/60'
-                        )}>
-                          {n.body}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={clsx(
-                            'text-[10px] font-black px-2 py-0.5 rounded-full border uppercase tracking-wide',
-                            n.isRead
-                              ? 'text-white/25 border-white/8 bg-white/3'
-                              : (() => {
-                                  switch (n.type) {
-                                    case 'Rain':     return 'text-sky-400 border-sky-500/25 bg-sky-500/10';
-                                    case 'Queue':    return 'text-indigo-400 border-indigo-500/25 bg-indigo-500/10';
-                                    case 'Schedule': return 'text-violet-400 border-violet-500/25 bg-violet-500/10';
-                                    default:         return 'text-white/40 border-white/10 bg-white/5';
-                                  }
-                                })()
-                          )}>
-                            {n.type}
-                          </span>
-                          <span className="text-[11px] text-white/25 font-semibold">
-                            {formatTs(n.timestamp)}
-                          </span>
-                        </div>
-                      </div>
 
-                      {/* Delete */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                        className="w-7 h-7 rounded-lg bg-transparent hover:bg-red-500/15 flex items-center justify-center transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-                      >
-                        <Trash2 size={13} className="text-red-400" />
-                      </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                          className="h-8 w-8 rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500/15 transition-all shrink-0"
+                        >
+                          <Trash2 size={13} className="text-red-400" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ))}
           </div>

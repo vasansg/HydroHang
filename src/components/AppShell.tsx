@@ -16,8 +16,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#080614' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative">
+            <div className="h-12 w-12 rounded-full border-2 border-violet-500/20 border-t-violet-500 animate-spin" />
+            <div className="absolute inset-0 rounded-full bg-violet-500/5 blur-lg" />
+          </div>
+          <p className="text-white/25 text-sm font-semibold tracking-wide">Loading…</p>
+        </div>
       </div>
     );
   }
@@ -25,11 +31,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
       <TopNav />
-      <main className="relative mx-auto w-full max-w-7xl px-4 pb-10 pt-6 lg:px-6 lg:pt-8">
-        <div className="pointer-events-none absolute inset-x-0 -top-6 h-28 bg-gradient-to-b from-white/5 to-transparent" />
-        <div key={pathname} className="relative" style={{ animation: 'fadeInUp 0.4s ease both' }}>{children}</div>
+      <main className="relative mx-auto w-full max-w-7xl px-4 pb-12 pt-7 lg:px-6 lg:pt-9">
+        <div
+          key={pathname}
+          className="relative"
+          style={{ animation: 'fadeInUp 0.35s ease both' }}
+        >
+          {children}
+        </div>
       </main>
     </div>
   );
