@@ -12,6 +12,7 @@ import { DryerProvider } from '@/context/DryerContext';
 import { DryerQueueProvider } from '@/context/DryerQueueContext';
 import { RainSensorProvider } from '@/context/RainSensorContext';
 import { WeatherProvider } from '@/context/WeatherContext';
+import { FamilyPermissionsProvider } from '@/context/FamilyPermissionsContext';
 
 export const metadata: Metadata = {
   title: 'HydroHang – Laundry Management',
@@ -23,25 +24,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <AuthProvider>
-          <NotificationProvider>
-            <GamificationProvider>
-              <ScheduleProvider>
-                <QueueProvider>
-                  <WashingMachineProvider>
-                    <DryerProvider>
-                      <DryerQueueProvider>
-                      <RainSensorProvider>
-                        <WeatherProvider>
-                          {children}
-                        </WeatherProvider>
-                      </RainSensorProvider>
-                      </DryerQueueProvider>
-                    </DryerProvider>
-                  </WashingMachineProvider>
-                </QueueProvider>
-              </ScheduleProvider>
-            </GamificationProvider>
-          </NotificationProvider>
+          <FamilyPermissionsProvider>
+            <NotificationProvider>
+              <GamificationProvider>
+                <ScheduleProvider>
+                  <QueueProvider>
+                    <WashingMachineProvider>
+                      <DryerProvider>
+                        <DryerQueueProvider>
+                          <RainSensorProvider>
+                            <WeatherProvider>
+                              {children}
+                            </WeatherProvider>
+                          </RainSensorProvider>
+                        </DryerQueueProvider>
+                      </DryerProvider>
+                    </WashingMachineProvider>
+                  </QueueProvider>
+                </ScheduleProvider>
+              </GamificationProvider>
+            </NotificationProvider>
+          </FamilyPermissionsProvider>
         </AuthProvider>
       </body>
     </html>

@@ -5,12 +5,13 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, CalendarDays, Layers, Award, User, LogOut,
-  WashingMachine, Bell, Cloud, Cpu, Settings, Users,
+  WashingMachine, Bell, Cloud, Cpu, Settings, Users, Lock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
+import { useFamilyPermissions, ROUTE_PERMISSION_MAP } from '@/context/FamilyPermissionsContext';
 
 const NAV = [
   { href: '/dashboard',             label: 'Dashboard', icon: LayoutDashboard },
@@ -28,7 +29,10 @@ const NAV = [
 export default function TopNav() {
   const pathname = usePathname();
   const { userModel, logout } = useAuth();
+  const { canAccess } = useFamilyPermissions();
   const [unread, setUnread] = useState(0);
+
+  const isSecondary = userModel?.role === 'Secondary';
 
   useEffect(() => {
     const uid = userModel?.uid;
@@ -41,6 +45,14 @@ export default function TopNav() {
   }, [userModel?.uid]);
 
   const initials = (userModel?.name ?? 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+  function isLocked(href: string): boolean {
+    if (!isSecondary) return false;
+    if (href === '/family') return true; // always Primary-only
+    const permKey = ROUTE_PERMISSION_MAP[href];
+    if (!permKey) return false;
+    return !canAccess(permKey);
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#080614]/80 backdrop-blur-2xl">
@@ -62,6 +74,7 @@ export default function TopNav() {
           <nav className="hidden items-center gap-0.5 rounded-2xl border border-white/[0.07] bg-white/[0.03] p-1 md:flex overflow-x-auto">
             {NAV.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + '/');
+              const locked = isLocked(href);
               return (
                 <Link
                   key={href}
@@ -70,12 +83,17 @@ export default function TopNav() {
                     'relative inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all duration-200 whitespace-nowrap',
                     active
                       ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/20'
+                      : locked
+                      ? 'text-white/20 cursor-pointer'
                       : 'text-white/45 hover:bg-white/[0.07] hover:text-white/80'
                   )}
                 >
-                  <Icon size={14} />
-                  {label}
-                  {href === '/notifications' && unread > 0 && (
+                  <Icon size={14} className={locked ? 'opacity-40' : ''} />
+                  <span className={locked ? 'opacity-40' : ''}>{label}</span>
+                  {locked && (
+                    <Lock size={9} className="text-white/30 shrink-0" />
+                  )}
+                  {href === '/notifications' && unread > 0 && !locked && (
                     <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-0.5 text-[9px] font-black text-white">
                       {unread > 99 ? '99+' : unread}
                     </span>
@@ -113,6 +131,7 @@ export default function TopNav() {
           <div className="inline-flex min-w-full items-center gap-0.5 rounded-xl border border-white/[0.07] bg-white/[0.03] p-1">
             {NAV.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + '/');
+              const locked = isLocked(href);
               return (
                 <Link
                   key={href}
@@ -121,12 +140,15 @@ export default function TopNav() {
                     'relative inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all duration-200',
                     active
                       ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white'
+                      : locked
+                      ? 'text-white/18'
                       : 'text-white/40 hover:bg-white/[0.07] hover:text-white/70'
                   )}
                 >
-                  <Icon size={12} />
-                  {label}
-                  {href === '/notifications' && unread > 0 && (
+                  <Icon size={12} className={locked ? 'opacity-35' : ''} />
+                  <span className={locked ? 'opacity-35' : ''}>{label}</span>
+                  {locked && <Lock size={8} className="text-white/25 shrink-0" />}
+                  {href === '/notifications' && unread > 0 && !locked && (
                     <span className="absolute -top-1 -right-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-red-500 px-0.5 text-[8px] font-black text-white">
                       {unread > 9 ? '9+' : unread}
                     </span>

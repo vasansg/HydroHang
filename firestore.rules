@@ -84,5 +84,16 @@ service cloud.firestore {
       allow write: if request.auth != null && resource.data.userId == request.auth.uid;
       allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
     }
+
+    // Family-level settings (module permissions). Keyed by familyCode.
+    match /families/{familyCode} {
+      // Any authenticated family member can read their family settings.
+      allow read: if request.auth != null
+        && userFamilyCode(request.auth.uid) == familyCode;
+      // Only Primary role members can write family settings.
+      allow write: if request.auth != null
+        && userFamilyCode(request.auth.uid) == familyCode
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Primary';
+    }
   }
 }
