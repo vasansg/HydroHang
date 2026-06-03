@@ -33,6 +33,13 @@ export interface UserModel {
   notificationPreferences?: NotificationPreferences;
   isActive: boolean;
   fcmTokens?: string[];
+  /**
+   * Per-user module access flags. Stored directly on the user document,
+   * aligned with the Flutter app's data model. Keys use snake_case:
+   * queue, weather, manual_control, smart_schedule, badges,
+   * notifications, notification_settings
+   */
+  modulePermissions?: Record<string, boolean>;
 }
 
 // ─── Schedule ─────────────────────────────────────────────────────────────────

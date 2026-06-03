@@ -3,21 +3,23 @@
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
 import { useAuth } from '@/context/AuthContext';
-import { useFamilyPermissions, ModulePermissions, DEFAULT_PERMISSIONS } from '@/context/FamilyPermissionsContext';
-import { UserModel, GamificationData, getTier, getTierProgress } from '@/lib/types';
 import {
-  collection, query, where, onSnapshot, getDocs,
-} from 'firebase/firestore';
+  useFamilyPermissions,
+  ModulePermissions,
+  DEFAULT_PERMISSIONS,
+} from '@/context/FamilyPermissionsContext';
+import { UserModel, GamificationData, getTier, getTierProgress } from '@/lib/types';
+import { collection, query, where, onSnapshot, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
   Users, Crown, Copy, Check, Zap, Flame, Award, Shield,
   Trophy, Share2, CalendarDays, Layers, Cloud, Cpu, Bell,
-  Settings, Loader2, Home, X, CheckCircle,
+  Settings, Loader2, Home, X, CheckCircle, UserMinus, AlertTriangle,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import Link from 'next/link';
 
-// ─── Module definitions ───────────────────────────────────────────────────────
+// ─── Module definitions — keys match Flutter's modulePermissions field names ──
 
 const MODULE_DEFS: {
   key: keyof ModulePermissions;
@@ -26,14 +28,20 @@ const MODULE_DEFS: {
   icon: React.ReactNode;
   accent: string;
 }[] = [
-  { key: 'schedules',            label: 'Schedules',       description: 'Create & view laundry schedules',  icon: <CalendarDays size={17} />, accent: '#10B981' },
+  { key: 'smart_schedule',       label: 'Schedules',       description: 'Create & view laundry schedules',  icon: <CalendarDays size={17} />, accent: '#10B981' },
   { key: 'queue',                label: 'Queue',           description: 'Join & manage washing queues',     icon: <Layers size={17} />,       accent: '#06B6D4' },
   { key: 'weather',              label: 'Weather',         description: 'View weather & drying forecasts',  icon: <Cloud size={17} />,        accent: '#3B82F6' },
-  { key: 'manualControl',        label: 'Manual Control',  description: 'View sensor readings & controls',  icon: <Cpu size={17} />,          accent: '#8B5CF6' },
+  { key: 'manual_control',       label: 'Manual Control',  description: 'View sensor readings & controls',  icon: <Cpu size={17} />,          accent: '#8B5CF6' },
   { key: 'badges',               label: 'Achievements',    description: 'View badges & tier progress',      icon: <Award size={17} />,        accent: '#F59E0B' },
   { key: 'notifications',        label: 'Notifications',   description: 'Receive & manage alerts',          icon: <Bell size={17} />,         accent: '#6366F1' },
-  { key: 'notificationSettings', label: 'Notif. Settings', description: 'Configure notification prefs',     icon: <Settings size={17} />,     accent: '#EC4899' },
+  { key: 'notification_settings',label: 'Notif. Settings', description: 'Configure notification prefs',     icon: <Settings size={17} />,     accent: '#EC4899' },
 ];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getMemberPerms(user: UserModel): ModulePermissions {
+  return { ...DEFAULT_PERMISSIONS, ...(user.modulePermissions ?? {}) };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,11 +55,10 @@ interface MemberWithStats {
 
 export default function FamilyPage() {
   const { userModel } = useAuth();
-  const { updateUserPermissions } = useFamilyPermissions();
+  const { updateUserPermissions, removeFamilyMember } = useFamilyPermissions();
 
   const [members, setMembers] = useState<UserModel[]>([]);
   const [gamificationMap, setGamificationMap] = useState<Map<string, GamificationData>>(new Map());
-  const [memberPermsMap, setMemberPermsMap] = useState<Map<string, ModulePermissions>>(new Map());
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [selectedMember, setSelectedMember] = useState<MemberWithStats | null>(null);
@@ -59,15 +66,17 @@ export default function FamilyPage() {
   const familyCode = userModel?.familyCode ?? '';
   const isPrimary = userModel?.role === 'Primary';
 
-  // Real-time: family members
+  // Real-time: active family members (isActive != false, same familyCode)
   useEffect(() => {
     if (!familyCode) return;
     const q = query(collection(db, 'users'), where('familyCode', '==', familyCode));
     return onSnapshot(q, async (snap) => {
-      const users = snap.docs.map(d => d.data() as UserModel);
+      // Filter out removed members (isActive === false), matching Flutter behaviour
+      const users = snap.docs
+        .map(d => d.data() as UserModel)
+        .filter(u => u.isActive !== false);
       setMembers(users);
 
-      // Load gamification for all members
       const uids = users.map(u => u.uid);
       const gamiMap = new Map<string, GamificationData>();
       for (let i = 0; i < uids.length; i += 10) {
@@ -80,19 +89,6 @@ export default function FamilyPage() {
       setLoading(false);
     }, () => setLoading(false));
   }, [familyCode]);
-
-  // Real-time: per-user permissions (Primary reads whole subcollection)
-  useEffect(() => {
-    if (!familyCode || !isPrimary) return;
-    const ref = collection(db, 'families', familyCode, 'memberPermissions');
-    return onSnapshot(ref, snap => {
-      const map = new Map<string, ModulePermissions>();
-      snap.docs.forEach(d => {
-        map.set(d.id, { ...DEFAULT_PERMISSIONS, ...(d.data().modulePermissions ?? {}) });
-      });
-      setMemberPermsMap(map);
-    }, () => {});
-  }, [familyCode, isPrimary]);
 
   const rankedMembers: MemberWithStats[] = [...members]
     .map(user => ({ user, gamification: gamificationMap.get(user.uid) ?? null, rank: 0 }))
@@ -114,7 +110,7 @@ export default function FamilyPage() {
     } else { copyCode(); }
   };
 
-  // ── Secondary: access denied ───────────────────────────────────────────────
+  // ── Secondary gate ─────────────────────────────────────────────────────────
   if (!isPrimary) {
     return (
       <AppShell>
@@ -143,7 +139,7 @@ export default function FamilyPage() {
     );
   }
 
-  // ── Primary user view ──────────────────────────────────────────────────────
+  // ── Primary view ───────────────────────────────────────────────────────────
   return (
     <AppShell>
       <div className="max-w-5xl mx-auto space-y-8">
@@ -165,7 +161,7 @@ export default function FamilyPage() {
                 </div>
               </div>
               <p className="text-white/45 text-sm font-medium">
-                {loading ? 'Loading…' : `${members.length} member${members.length !== 1 ? 's' : ''} · Click a member to manage their access`}
+                {loading ? 'Loading…' : `${members.length} member${members.length !== 1 ? 's' : ''} · Tap a Secondary member to manage their access`}
               </p>
             </div>
 
@@ -237,19 +233,19 @@ export default function FamilyPage() {
           )}
         </div>
 
-        {/* ── Members grid — click Secondary to manage access ── */}
+        {/* ── Members grid ── */}
         <div>
-          <div className="flex items-center gap-3 mb-5">
+          <div className="flex items-center gap-3 mb-5 flex-wrap">
             <h2 className="text-xl font-black">All Members</h2>
             {!loading && <span className="bg-white/10 text-white/55 text-xs font-bold px-2.5 py-1 rounded-full">{members.length}</span>}
-            <span className="ml-auto text-white/30 text-xs font-medium hidden sm:block">
-              Click a Secondary member to manage their module access
+            <span className="ml-auto text-white/25 text-xs font-medium hidden sm:block">
+              Tap a Secondary member card to manage their access
             </span>
           </div>
 
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map(i => <div key={i} className="h-56 bg-surface border border-white/10 rounded-2xl animate-pulse" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-60 bg-surface border border-white/10 rounded-2xl animate-pulse" />)}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -259,22 +255,23 @@ export default function FamilyPage() {
                   member={m}
                   currentUid={userModel?.uid ?? ''}
                   delay={idx * 70}
-                  memberPerms={memberPermsMap.get(m.user.uid) ?? DEFAULT_PERMISSIONS}
                   onManage={() => setSelectedMember(m)}
                 />
               ))}
             </div>
           )}
         </div>
-
       </div>
 
       {/* ── Per-user access modal ── */}
       {selectedMember && (
         <UserAccessModal
           member={selectedMember}
-          currentPerms={memberPermsMap.get(selectedMember.user.uid) ?? DEFAULT_PERMISSIONS}
-          onSave={async (perms) => { await updateUserPermissions(selectedMember.user.uid, perms); }}
+          onSave={async (perms) => updateUserPermissions(selectedMember.user.uid, perms)}
+          onRemove={async () => {
+            await removeFamilyMember(selectedMember.user.uid);
+            setSelectedMember(null);
+          }}
           onClose={() => setSelectedMember(null)}
         />
       )}
@@ -286,18 +283,20 @@ export default function FamilyPage() {
 
 function UserAccessModal({
   member,
-  currentPerms,
   onSave,
+  onRemove,
   onClose,
 }: {
   member: MemberWithStats;
-  currentPerms: ModulePermissions;
   onSave: (perms: ModulePermissions) => Promise<void>;
+  onRemove: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [localPerms, setLocalPerms] = useState<ModulePermissions>({ ...currentPerms });
+  const [localPerms, setLocalPerms] = useState<ModulePermissions>(getMemberPerms(member.user));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   const tier = getTier(member.gamification?.totalXp ?? 0);
   const xp = member.gamification?.totalXp ?? 0;
@@ -312,6 +311,11 @@ function UserAccessModal({
     setTimeout(() => { setSaved(false); onClose(); }, 900);
   };
 
+  const handleRemove = async () => {
+    setRemoving(true);
+    await onRemove();
+  };
+
   const setAll = (value: boolean) => {
     const next = { ...DEFAULT_PERMISSIONS };
     MODULE_DEFS.forEach(m => { next[m.key] = value; });
@@ -321,18 +325,14 @@ function UserAccessModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/65 backdrop-blur-sm"
-        onClick={onClose}
-        style={{ animation: 'fadeIn 0.2s ease both' }}
-      />
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-sm" onClick={onClose} style={{ animation: 'fadeIn 0.2s ease both' }} />
 
-      {/* Sheet / Modal */}
+      {/* Sheet */}
       <div
         className="relative w-full md:max-w-lg bg-[#09071a] border border-white/[0.1] rounded-t-3xl md:rounded-3xl max-h-[92vh] overflow-y-auto scrollbar-none"
         style={{ animation: 'slideInUp 0.3s cubic-bezier(0.34,1.1,0.64,1) both' }}
       >
-        {/* Drag handle (mobile) */}
+        {/* Mobile drag handle */}
         <div className="flex justify-center pt-3 md:hidden">
           <div className="h-1 w-10 rounded-full bg-white/20" />
         </div>
@@ -342,60 +342,35 @@ function UserAccessModal({
           {/* Header */}
           <div className="flex items-start justify-between gap-3 mb-6">
             <div className="flex items-center gap-4">
-              {/* Avatar */}
               <div className="relative shrink-0">
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-2xl font-black text-lg text-white shadow-lg"
-                  style={{ background: `linear-gradient(135deg, ${tier.color}80, ${tier.color}40)`, border: `2px solid ${tier.color}55`, boxShadow: `0 0 20px ${tier.color}25` }}
-                >
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl font-black text-lg text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${tier.color}80, ${tier.color}40)`, border: `2px solid ${tier.color}55`, boxShadow: `0 0 20px ${tier.color}25` }}>
                   {initials}
                 </div>
-                <div className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[#09071a] border border-white/20 text-sm">
-                  {tier.emoji}
-                </div>
+                <div className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-[#09071a] border border-white/20 text-sm">{tier.emoji}</div>
               </div>
-
-              {/* Info */}
               <div>
                 <p className="font-black text-lg leading-tight">{member.user.name}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: tier.color, background: `${tier.color}20`, border: `1px solid ${tier.color}35` }}>
-                    {tier.name}
-                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: tier.color, background: `${tier.color}20`, border: `1px solid ${tier.color}35` }}>{tier.name}</span>
                   <span className="text-xs text-white/35 font-semibold">{xp.toLocaleString()} XP</span>
                 </div>
+                <p className="text-[10px] text-white/30 mt-1 font-medium">{member.user.email}</p>
               </div>
             </div>
-
-            <button
-              onClick={onClose}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-white/40 hover:bg-white/[0.1] hover:text-white transition-all"
-            >
+            <button onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-white/40 hover:bg-white/[0.1] hover:text-white transition-all">
               <X size={17} />
             </button>
           </div>
 
-          {/* Section title + quick actions */}
+          {/* Module access */}
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-black text-base">Module Access</h3>
-              <p className="text-white/35 text-xs font-medium mt-0.5">
-                {enabledCount}/{MODULE_DEFS.length} modules enabled
-              </p>
+              <p className="text-white/35 text-xs font-medium mt-0.5">{enabledCount}/{MODULE_DEFS.length} modules enabled</p>
             </div>
             <div className="flex gap-2">
-              <button
-                onClick={() => setAll(true)}
-                className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all"
-              >
-                All on
-              </button>
-              <button
-                onClick={() => setAll(false)}
-                className="text-xs font-bold px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/18 text-red-400 hover:bg-red-500/18 transition-all"
-              >
-                All off
-              </button>
+              <button onClick={() => setAll(true)} className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-500/12 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all">All on</button>
+              <button onClick={() => setAll(false)} className="text-xs font-bold px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/18 text-red-400 hover:bg-red-500/18 transition-all">All off</button>
             </div>
           </div>
 
@@ -407,42 +382,18 @@ function UserAccessModal({
                 <button
                   key={key}
                   onClick={() => setLocalPerms(p => ({ ...p, [key]: !p[key] }))}
-                  className={clsx(
-                    'w-full flex items-center gap-4 p-4 rounded-2xl border text-left transition-all duration-150 active:scale-[0.99]',
-                    isOn ? 'bg-white/[0.04]' : 'bg-white/[0.02] opacity-75'
-                  )}
+                  className={clsx('w-full flex items-center gap-4 p-4 rounded-2xl border text-left transition-all duration-150 active:scale-[0.99]', isOn ? 'bg-white/[0.04]' : 'bg-white/[0.02] opacity-70')}
                   style={{ borderColor: isOn ? `${accent}30` : 'rgba(255,255,255,0.06)' }}
                 >
-                  {/* Icon */}
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all"
-                    style={{
-                      background: isOn ? `${accent}18` : 'rgba(255,255,255,0.04)',
-                      border: `1px solid ${isOn ? `${accent}30` : 'rgba(255,255,255,0.07)'}`,
-                      color: isOn ? accent : 'rgba(255,255,255,0.22)',
-                    }}
-                  >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all" style={{ background: isOn ? `${accent}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${isOn ? `${accent}30` : 'rgba(255,255,255,0.07)'}`, color: isOn ? accent : 'rgba(255,255,255,0.22)' }}>
                     {icon}
                   </div>
-
-                  {/* Label */}
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-sm">{label}</p>
                     <p className="text-white/30 text-[11px] font-medium mt-0.5">{description}</p>
                   </div>
-
-                  {/* Toggle */}
-                  <div
-                    className="relative shrink-0 w-12 h-6 rounded-full transition-all duration-250"
-                    style={{
-                      background: isOn ? `linear-gradient(135deg, ${accent}, ${accent}bb)` : 'rgba(255,255,255,0.1)',
-                      boxShadow: isOn ? `0 0 10px ${accent}35` : undefined,
-                    }}
-                  >
-                    <div
-                      className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-250"
-                      style={{ transform: isOn ? 'translateX(24px)' : 'translateX(2px)' }}
-                    />
+                  <div className="relative shrink-0 w-12 h-6 rounded-full transition-all duration-200" style={{ background: isOn ? `linear-gradient(135deg, ${accent}, ${accent}bb)` : 'rgba(255,255,255,0.1)', boxShadow: isOn ? `0 0 10px ${accent}35` : undefined }}>
+                    <div className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200" style={{ transform: isOn ? 'translateX(24px)' : 'translateX(2px)' }} />
                   </div>
                 </button>
               );
@@ -453,14 +404,44 @@ function UserAccessModal({
           <button
             onClick={handleSave}
             disabled={saving || saved}
-            className={clsx(
-              'w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold transition-all active:scale-[0.98]',
-              saved ? 'bg-emerald-600/80 text-white border border-emerald-500/30' : 'btn-primary'
-            )}
+            className={clsx('w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold transition-all active:scale-[0.98] mb-3', saved ? 'bg-emerald-600/80 text-white border border-emerald-500/30' : 'btn-primary')}
           >
             {saving ? <Loader2 size={17} className="animate-spin" /> : saved ? <CheckCircle size={17} /> : <Shield size={17} />}
-            {saved ? 'Permissions Saved!' : saving ? 'Saving…' : `Save Permissions for ${member.user.name.split(' ')[0]}`}
+            {saved ? 'Permissions Saved!' : saving ? 'Saving…' : `Save for ${member.user.name.split(' ')[0]}`}
           </button>
+
+          {/* Remove member */}
+          {!confirmRemove ? (
+            <button
+              onClick={() => setConfirmRemove(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-red-400/70 hover:text-red-400 hover:bg-red-500/8 border border-transparent hover:border-red-500/15 transition-all"
+            >
+              <UserMinus size={15} /> Remove from Family
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-red-500/25 bg-red-500/8 p-4" style={{ animation: 'fadeInUp 0.25s ease both' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={16} className="text-red-400 shrink-0" />
+                <p className="text-sm font-bold text-red-300">Remove {member.user.name.split(' ')[0]} from your family?</p>
+              </div>
+              <p className="text-white/40 text-xs font-medium mb-4">
+                They will lose access to all shared family data. This can be undone by inviting them back with the family code.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleRemove}
+                  disabled={removing}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/80 hover:bg-red-500 text-white text-sm font-bold transition-all active:scale-95"
+                >
+                  {removing ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />}
+                  {removing ? 'Removing…' : 'Yes, Remove'}
+                </button>
+                <button onClick={() => setConfirmRemove(false)} className="flex-1 py-2.5 rounded-xl bg-white/8 text-white/60 text-sm font-bold hover:bg-white/12 transition-all">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -495,11 +476,12 @@ function PodiumCard({ member, currentUid, size }: { member: MemberWithStats; cur
   const isMe = member.user.uid === currentUid;
   const initials = member.user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   const medal = size === 'lg' ? '🥇' : size === 'md' ? '🥈' : '🥉';
+  const avatarSize = size === 'lg' ? 'h-16 w-16 text-xl' : size === 'md' ? 'h-12 w-12 text-lg' : 'h-11 w-11 text-base';
   return (
     <div className={clsx('relative flex flex-col items-center justify-end w-36 pb-5 rounded-2xl border bg-gradient-to-b backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 shadow-lg', cfg.height, cfg.bgFrom, cfg.bgTo, cfg.border, cfg.shadow, isMe && 'ring-2 ring-violet-500/50')}>
       {size === 'lg' && <Crown size={22} className={clsx('mb-2 animate-[float_3s_ease-in-out_infinite]', cfg.textColor)} />}
       {size !== 'lg' && <span className="text-xl mb-2">{medal}</span>}
-      <div className={clsx('flex items-center justify-center rounded-2xl font-black text-white mb-2.5 shadow-lg', size === 'lg' ? 'h-16 w-16 text-xl' : size === 'md' ? 'h-12 w-12 text-lg' : 'h-11 w-11 text-base')} style={{ background: `linear-gradient(135deg, ${tier.color}90, ${tier.color}50)`, border: `2px solid ${tier.color}60` }}>
+      <div className={clsx('flex items-center justify-center rounded-2xl font-black text-white mb-2.5 shadow-lg', avatarSize)} style={{ background: `linear-gradient(135deg, ${tier.color}90, ${tier.color}50)`, border: `2px solid ${tier.color}60` }}>
         {initials}
       </div>
       <p className="text-xs font-bold text-center truncate max-w-[112px] px-2 leading-tight mb-0.5">{member.user.name}</p>
@@ -556,12 +538,11 @@ function LeaderboardRow({ member, currentUid, delay }: { member: MemberWithStats
 // ─── MemberCard ───────────────────────────────────────────────────────────────
 
 function MemberCard({
-  member, currentUid, delay, memberPerms, onManage,
+  member, currentUid, delay, onManage,
 }: {
   member: MemberWithStats;
   currentUid: string;
   delay: number;
-  memberPerms: ModulePermissions;
   onManage: () => void;
 }) {
   const isMe = member.user.uid === currentUid;
@@ -572,21 +553,18 @@ function MemberCard({
   const badges = member.gamification?.earnedBadgeIds.length ?? 0;
   const progress = getTierProgress(xp) * 100;
   const initials = member.user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+  const memberPerms = getMemberPerms(member.user);
   const enabledCount = isPrimary ? MODULE_DEFS.length : MODULE_DEFS.filter(m => memberPerms[m.key]).length;
 
   return (
     <div
-      className={clsx(
-        'group relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl',
-        isMe ? 'bg-gradient-to-br from-violet-900/55 to-indigo-900/35 border-violet-500/35 shadow-lg shadow-violet-500/10' : 'bg-surface/90 border-white/10 hover:border-white/18 shadow-xl shadow-black/15',
-        !isPrimary && 'cursor-pointer'
-      )}
+      className={clsx('group relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl', isMe ? 'bg-gradient-to-br from-violet-900/55 to-indigo-900/35 border-violet-500/35 shadow-lg shadow-violet-500/10' : 'bg-surface/90 border-white/10 hover:border-white/18 shadow-xl shadow-black/15', !isPrimary && 'cursor-pointer')}
       style={{ animation: `fadeInUp 0.4s ease ${delay}ms both` }}
       onClick={!isPrimary ? onManage : undefined}
     >
       {isMe && <div className="pointer-events-none absolute -top-12 -right-12 h-36 w-36 rounded-full bg-violet-600/12 blur-2xl" />}
 
-      {/* Role badges */}
       <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5">
         {isMe && <span className="text-[9px] font-black text-violet-400 bg-violet-500/20 border border-violet-500/30 px-2 py-0.5 rounded-full">YOU</span>}
         {isPrimary && <span className="text-[9px] font-black text-yellow-400 bg-yellow-500/15 border border-yellow-500/25 px-2 py-0.5 rounded-full flex items-center gap-1"><Crown size={8} /> Owner</span>}
@@ -602,7 +580,7 @@ function MemberCard({
         </div>
         <div className="flex-1 min-w-0 pt-0.5">
           <p className="font-black text-sm truncate leading-tight mb-1">{member.user.name}</p>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: tier.color, background: `${tier.color}20`, border: `1px solid ${tier.color}35` }}>{tier.name}</span>
             <span className="text-[10px] text-white/30 font-semibold">#{member.rank}</span>
           </div>
@@ -620,7 +598,7 @@ function MemberCard({
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-2 mb-4">
         <MiniStat icon={<Flame size={11} className="text-orange-400" />} value={`${streak}d`} label="Streak" />
         <MiniStat icon={<Award size={11} className="text-purple-400" />} value={badges.toString()} label="Badges" />
@@ -632,14 +610,13 @@ function MemberCard({
         />
       </div>
 
-      {/* Manage button — Secondary only, visible to Primary */}
+      {/* Manage button — Secondary users only */}
       {!isPrimary && (
         <button
-          onClick={(e) => { e.stopPropagation(); onManage(); }}
+          onClick={e => { e.stopPropagation(); onManage(); }}
           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-violet-500/12 hover:bg-violet-500/20 border border-violet-500/20 text-violet-300 text-xs font-bold transition-all group-hover:border-violet-500/35"
         >
-          <Shield size={13} />
-          Manage Module Access
+          <Shield size={13} /> Manage Module Access
         </button>
       )}
     </div>
