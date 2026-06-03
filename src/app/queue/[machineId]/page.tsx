@@ -159,6 +159,8 @@ export default function MachineDetailPage() {
         .map((d) => ({ id: d.id, ...d.data() } as QueueModel))
         .sort((a, b) => a.position - b.position);
       setMachineQueue(items);
+    }, (err) => {
+      console.error('[Queue] washing_queue subscription failed — familyCode:', familyCode, 'machineId:', machineId, err);
     });
     return unsub;
   }, [familyCode, machineId]);
