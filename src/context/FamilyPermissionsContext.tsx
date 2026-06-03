@@ -27,7 +27,7 @@ export const DEFAULT_PERMISSIONS: ModulePermissions = {
   notificationSettings: true,
 };
 
-/** Maps a Next.js pathname to the ModulePermissions key that guards it. */
+/** Maps a Next.js pathname prefix to the ModulePermissions key that guards it. */
 export const ROUTE_PERMISSION_MAP: Partial<Record<string, keyof ModulePermissions>> = {
   '/schedules': 'schedules',
   '/queue': 'queue',
@@ -41,9 +41,15 @@ export const ROUTE_PERMISSION_MAP: Partial<Record<string, keyof ModulePermission
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 interface FamilyPermissionsContextType {
+  /** The current authenticated user's own module permissions. */
   permissions: ModulePermissions;
   loading: boolean;
-  updatePermissions: (perms: ModulePermissions) => Promise<void>;
+  /**
+   * Primary-only: write permissions for any family member.
+   * @param targetUid  The UID of the member whose permissions to update.
+   * @param perms      The full ModulePermissions object to save.
+   */
+  updateUserPermissions: (targetUid: string, perms: ModulePermissions) => Promise<void>;
   /** Returns true if the current user may access the given module. Primary always returns true. */
   canAccess: (module: keyof ModulePermissions) => boolean;
 }
@@ -56,12 +62,15 @@ export function FamilyPermissionsProvider({ children }: { children: React.ReactN
   const [loading, setLoading] = useState(true);
 
   const familyCode = userModel?.familyCode;
+  const uid = userModel?.uid;
   const isPrimary = userModel?.role === 'Primary';
 
+  // Listen to THIS user's own per-user permissions document.
+  // Path: families/{familyCode}/memberPermissions/{uid}
   useEffect(() => {
-    if (!familyCode) { setLoading(false); return; }
+    if (!familyCode || !uid) { setLoading(false); return; }
 
-    const ref = doc(db, 'families', familyCode);
+    const ref = doc(db, 'families', familyCode, 'memberPermissions', uid);
     const unsub = onSnapshot(
       ref,
       (snap) => {
@@ -75,11 +84,16 @@ export function FamilyPermissionsProvider({ children }: { children: React.ReactN
       () => { setPermissions(DEFAULT_PERMISSIONS); setLoading(false); }
     );
     return unsub;
-  }, [familyCode]);
+  }, [familyCode, uid]);
 
-  const updatePermissions = async (perms: ModulePermissions) => {
+  /** Primary-only: save permissions for any member. */
+  const updateUserPermissions = async (targetUid: string, perms: ModulePermissions) => {
     if (!familyCode || !isPrimary) return;
-    await setDoc(doc(db, 'families', familyCode), { modulePermissions: perms }, { merge: true });
+    await setDoc(
+      doc(db, 'families', familyCode, 'memberPermissions', targetUid),
+      { modulePermissions: perms },
+      { merge: true }
+    );
   };
 
   const canAccess = (module: keyof ModulePermissions): boolean => {
@@ -89,7 +103,7 @@ export function FamilyPermissionsProvider({ children }: { children: React.ReactN
   };
 
   return (
-    <FamilyPermissionsContext.Provider value={{ permissions, loading, updatePermissions, canAccess }}>
+    <FamilyPermissionsContext.Provider value={{ permissions, loading, updateUserPermissions, canAccess }}>
       {children}
     </FamilyPermissionsContext.Provider>
   );
