@@ -275,3 +275,11 @@
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* iOS safe-area bottom padding for bottom nav */
+.pb-safe {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+.h-safe-bottom {
+  height: max(0px, env(safe-area-inset-bottom));
+}
