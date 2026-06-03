@@ -334,6 +334,19 @@ export default function QueuePage() {
     <AppShell>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-0">
 
+        {/* Family code banner — helps diagnose cross-platform sync issues */}
+        {familyCode ? (
+          <div className="mb-4 rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 flex items-center gap-2 text-xs text-white/40">
+            <span className="font-black text-white/30 uppercase tracking-wider">Family Code</span>
+            <span className="font-mono font-bold text-indigo-400 tracking-widest">{familyCode}</span>
+            <span className="text-white/20 ml-1">— use this same code on the app to sync</span>
+          </div>
+        ) : (
+          <div className="mb-4 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-2.5 text-xs text-red-300 font-bold">
+            No family code found on this account. Bookings will not sync with the app. Please log out and log in again with the same account you use on the app.
+          </div>
+        )}
+
         {/* ════════════════════════════════════════════════════════════════════
             WASHING MACHINE SECTION
         ════════════════════════════════════════════════════════════════════ */}

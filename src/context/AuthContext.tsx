@@ -8,7 +8,7 @@ import {
   signOut,
   User,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { auth, db, firebaseReady } from '@/lib/firebase';
 import { UserModel } from '@/lib/types';
 
@@ -39,26 +39,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+
+    let userDocUnsub: (() => void) | null = null;
+
+    const authUnsub = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
-      try {
-        if (firebaseUser) {
-          const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (snap.exists()) {
-            setUserModel(snap.data() as UserModel);
-          } else {
+
+      // Tear down previous user-doc listener whenever auth state changes
+      if (userDocUnsub) {
+        userDocUnsub();
+        userDocUnsub = null;
+      }
+
+      if (firebaseUser) {
+        // Real-time listener so familyCode updates (e.g. from Flutter) propagate immediately
+        userDocUnsub = onSnapshot(
+          doc(db, 'users', firebaseUser.uid),
+          (snap) => {
+            setUserModel(snap.exists() ? (snap.data() as UserModel) : null);
+            setLoading(false);
+          },
+          () => {
             setUserModel(null);
+            setLoading(false);
           }
-        } else {
-          setUserModel(null);
-        }
-      } catch {
+        );
+      } else {
         setUserModel(null);
-      } finally {
         setLoading(false);
       }
     });
-    return unsub;
+
+    return () => {
+      authUnsub();
+      if (userDocUnsub) userDocUnsub();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
