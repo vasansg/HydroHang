@@ -15,6 +15,7 @@ import {
   Cloud,
   Cpu,
   Settings,
+  Users,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -27,6 +28,7 @@ const NAV = [
   { href: '/queue',                 label: 'Queue',        icon: Layers },
   { href: '/weather',               label: 'Weather',      icon: Cloud },
   { href: '/manual-control',        label: 'Control',      icon: Cpu },
+  { href: '/family',                label: 'Family',       icon: Users },
   { href: '/badges',                label: 'Badges',       icon: Award },
   { href: '/notifications',         label: 'Alerts',       icon: Bell },
   { href: '/notification-settings', label: 'Notif.',       icon: Settings },
