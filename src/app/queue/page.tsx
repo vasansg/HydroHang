@@ -10,7 +10,6 @@ import {
   updateDoc,
   doc,
   Timestamp,
-  runTransaction,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -94,24 +93,17 @@ export default function QueuePage() {
 
   const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const queueRef = useRef<QueueModel[]>([]);
-  const dryerQueueRef = useRef<DryerQueueModel[]>([]);
-  const washerCompletedRef = useRef(new Set<string>());
-  const dryerCompletedRef = useRef(new Set<string>());
 
   const familyCode = userModel?.familyCode ?? '';
   const uid = userModel?.uid ?? '';
 
+  // 1-second tick — drives the countdown display
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setTick((t) => t + 1);
-      autoCompleteQueue(queueRef.current, washerCompletedRef.current, 'washing_queue', 'washingMachineId');
-      autoCompleteQueue(dryerQueueRef.current, dryerCompletedRef.current, 'dryer_queue', 'dryerId');
-    }, 1000);
+    timerRef.current = setInterval(() => setTick((t) => t + 1), 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
-  // Washer queue subscription — keep ref in sync for auto-complete
+  // Washer queue subscription
   useEffect(() => {
     if (!familyCode) return;
     const q = query(collection(db, 'washing_queue'), where('familyCode', '==', familyCode));
@@ -120,7 +112,6 @@ export default function QueuePage() {
         .map((d) => ({ id: d.id, ...d.data() } as QueueModel))
         .sort((a, b) => a.position - b.position);
       setQueue(items);
-      queueRef.current = items;
     }, (error) => {
       console.error('Failed to load queue:', error);
       setQueue([]);
@@ -137,7 +128,7 @@ export default function QueuePage() {
     });
   }, [familyCode]);
 
-  // Dryer queue subscription — keep ref in sync for auto-complete
+  // Dryer queue subscription
   useEffect(() => {
     if (!familyCode) return;
     const q = query(collection(db, 'dryer_queue'), where('familyCode', '==', familyCode));
@@ -146,7 +137,6 @@ export default function QueuePage() {
         .map((d) => ({ id: d.id, ...d.data() } as DryerQueueModel))
         .sort((a, b) => a.position - b.position);
       setDryerQueue(items);
-      dryerQueueRef.current = items;
     }, (error) => {
       console.error('Failed to load dryer queue:', error);
       setDryerQueue([]);
@@ -813,62 +803,6 @@ export default function QueuePage() {
       </div>
     </AppShell>
   );
-}
-
-// ─── Auto-complete helper (mirrors Cloud Function activateNextInQueue logic) ───
-
-type AnyQueueItem = (QueueModel | DryerQueueModel) & { id: string };
-
-function autoCompleteQueue(
-  queue: AnyQueueItem[],
-  completedSet: Set<string>,
-  collectionName: string,
-  machineIdField: string
-): void {
-  const now = Date.now();
-  for (const item of queue) {
-    if (item.status !== 'active') continue;
-    if (completedSet.has(item.id)) continue;
-    const endTs = item.endTime as Timestamp | undefined;
-    if (!endTs || typeof endTs.toDate !== 'function') continue;
-    if (now < endTs.toDate().getTime()) continue;
-
-    completedSet.add(item.id);
-    const machineId = (item as unknown as Record<string, unknown>)[machineIdField] as string;
-    const sessionRef = doc(db, collectionName, item.id);
-
-    void runTransaction(db, async (tx) => {
-      const snap = await tx.get(sessionRef);
-      if (!snap.exists() || snap.data().status !== 'active') return;
-
-      tx.update(sessionRef, { status: 'completed', endTime: Timestamp.now() });
-
-      // Activate next waiting (same order as Cloud Function: earliest startTime)
-      const nextWaiting = queue
-        .filter(q => {
-          const mid = (q as unknown as Record<string, unknown>)[machineIdField] as string;
-          return q.status === 'waiting' && mid === machineId;
-        })
-        .sort((a, b) =>
-          (a.startTime as Timestamp).toDate().getTime() -
-          (b.startTime as Timestamp).toDate().getTime()
-        )[0];
-
-      if (nextWaiting) {
-        const activateNow = Date.now();
-        tx.update(doc(db, collectionName, nextWaiting.id), {
-          status: 'active',
-          startTime: Timestamp.fromMillis(activateNow),
-          endTime: Timestamp.fromMillis(activateNow + nextWaiting.durationMinutes * 60 * 1000),
-          position: 0,
-          pickupReminderSent: false,
-        });
-      }
-    }).catch((err: unknown) => {
-      completedSet.delete(item.id);
-      console.error('Auto-complete error:', err);
-    });
-  }
 }
 
 // ─── Stat pill ────────────────────────────────────────────────────────────────

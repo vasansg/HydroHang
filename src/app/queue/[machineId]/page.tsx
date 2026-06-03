@@ -13,7 +13,6 @@ import {
   getDocs,
   orderBy,
   Timestamp,
-  runTransaction,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { sendQueueMessage } from '@/lib/services/queue-service';
@@ -92,60 +91,6 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-// ─── Auto-complete helper (mirrors Flutter Cloud Function logic) ──────────────
-// Runs inside the 1-second interval; uses a transaction to avoid race conditions.
-
-function autoCompleteExpired(
-  queue: QueueModel[],
-  completedSet: Set<string>,
-  collection_: string,
-  machineIdField: 'washingMachineId'
-): void {
-  const now = Date.now();
-  for (const item of queue) {
-    if (item.status !== 'active') continue;
-    if (completedSet.has(item.id)) continue;
-    const endTs = item.endTime as Timestamp | undefined;
-    if (!endTs || typeof endTs.toDate !== 'function') continue;
-    if (now < endTs.toDate().getTime()) continue;
-
-    completedSet.add(item.id);
-
-    const sessionRef = doc(db, collection_, item.id);
-    const machineId = (item as QueueModel)[machineIdField];
-
-    void runTransaction(db, async (tx) => {
-      const snap = await tx.get(sessionRef);
-      if (!snap.exists() || snap.data().status !== 'active') return;
-
-      tx.update(sessionRef, { status: 'completed', endTime: Timestamp.now() });
-
-      // Activate next waiting person (same logic as Cloud Function activateNextInQueue)
-      const nextWaiting = queue
-        .filter(q => q.status === 'waiting' && (q as QueueModel)[machineIdField] === machineId)
-        .sort((a, b) => {
-          const aMs = (a.startTime as Timestamp).toDate().getTime();
-          const bMs = (b.startTime as Timestamp).toDate().getTime();
-          return aMs - bMs;
-        })[0];
-
-      if (nextWaiting) {
-        const activateNow = Date.now();
-        tx.update(doc(db, collection_, nextWaiting.id), {
-          status: 'active',
-          startTime: Timestamp.fromMillis(activateNow),
-          endTime: Timestamp.fromMillis(activateNow + nextWaiting.durationMinutes * 60 * 1000),
-          position: 0,
-          pickupReminderSent: false,
-        });
-      }
-    }).catch((err: unknown) => {
-      completedSet.delete(item.id); // allow retry
-      console.error('Auto-complete tx error:', err);
-    });
-  }
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MachineDetailPage() {
@@ -160,8 +105,6 @@ export default function MachineDetailPage() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const machineQueueRef = useRef<QueueModel[]>([]);
-  const autoCompletedRef = useRef(new Set<string>());
 
   // Chat state
   const [messages, setMessages] = useState<QueueMessage[]>([]);
@@ -184,12 +127,9 @@ export default function MachineDetailPage() {
   const activeSession = machineQueue.find((q) => q.status === 'active');
   const isFree = !activeSession;
 
-  // 1-second tick + auto-complete expired sessions (mirrors Cloud Function logic)
+  // 1-second tick — drives the countdown display
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setTick((t) => t + 1);
-      autoCompleteExpired(machineQueueRef.current, autoCompletedRef.current, 'washing_queue', 'washingMachineId');
-    }, 1000);
+    timerRef.current = setInterval(() => setTick((t) => t + 1), 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
@@ -219,7 +159,6 @@ export default function MachineDetailPage() {
         .map((d) => ({ id: d.id, ...d.data() } as QueueModel))
         .sort((a, b) => a.position - b.position);
       setMachineQueue(items);
-      machineQueueRef.current = items;
     });
     return unsub;
   }, [familyCode, machineId]);

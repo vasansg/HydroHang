@@ -13,7 +13,6 @@ import {
   getDocs,
   orderBy,
   Timestamp,
-  runTransaction,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
@@ -80,53 +79,6 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-// ─── Auto-complete helper for dryer queue ─────────────────────────────────────
-
-function autoCompleteExpiredDryer(
-  queue: DryerQueueModel[],
-  completedSet: Set<string>,
-): void {
-  const now = Date.now();
-  for (const item of queue) {
-    if (item.status !== 'active') continue;
-    if (completedSet.has(item.id)) continue;
-    const endTs = item.endTime as Timestamp | undefined;
-    if (!endTs || typeof endTs.toDate !== 'function') continue;
-    if (now < endTs.toDate().getTime()) continue;
-
-    completedSet.add(item.id);
-    const sessionRef = doc(db, 'dryer_queue', item.id);
-    const thisDryerId = item.dryerId;
-
-    void runTransaction(db, async (tx) => {
-      const snap = await tx.get(sessionRef);
-      if (!snap.exists() || snap.data().status !== 'active') return;
-      tx.update(sessionRef, { status: 'completed', endTime: Timestamp.now() });
-
-      const nextWaiting = queue
-        .filter((q) => q.status === 'waiting' && q.dryerId === thisDryerId)
-        .sort((a, b) =>
-          (a.startTime as Timestamp).toDate().getTime() -
-          (b.startTime as Timestamp).toDate().getTime()
-        )[0];
-
-      if (nextWaiting) {
-        const activateNow = Date.now();
-        tx.update(doc(db, 'dryer_queue', nextWaiting.id), {
-          status: 'active',
-          startTime: Timestamp.fromMillis(activateNow),
-          endTime: Timestamp.fromMillis(activateNow + nextWaiting.durationMinutes * 60 * 1000),
-          position: 0,
-          pickupReminderSent: false,
-        });
-      }
-    }).catch((err: unknown) => {
-      completedSet.delete(item.id);
-      console.error('Dryer auto-complete error:', err);
-    });
-  }
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DryerDetailPage() {
@@ -141,8 +93,6 @@ export default function DryerDetailPage() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const dryerQueueRef = useRef<DryerQueueModel[]>([]);
-  const autoCompletedRef = useRef(new Set<string>());
 
   // Chat state
   const [messages, setMessages] = useState<QueueMessage[]>([]);
@@ -164,12 +114,9 @@ export default function DryerDetailPage() {
   const activeSession = dryerQueue.find((q) => q.status === 'active');
   const isFree = !activeSession;
 
-  // 1-second tick + auto-complete expired dryer sessions
+  // 1-second tick — drives the countdown display
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      setTick((t) => t + 1);
-      autoCompleteExpiredDryer(dryerQueueRef.current, autoCompletedRef.current);
-    }, 1000);
+    timerRef.current = setInterval(() => setTick((t) => t + 1), 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
@@ -199,7 +146,6 @@ export default function DryerDetailPage() {
         .map((d) => ({ id: d.id, ...d.data() } as DryerQueueModel))
         .sort((a, b) => a.position - b.position);
       setDryerQueue(items);
-      dryerQueueRef.current = items;
     });
     return unsub;
   }, [familyCode, dryerId]);
