@@ -334,33 +334,6 @@ export default function QueuePage() {
     <AppShell>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-0">
 
-        {/* Sync debug banner — verify family code and UID match on both platforms */}
-        {familyCode ? (
-          <div className="mb-4 rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 space-y-1 text-xs">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-white/40">
-              <span>
-                <span className="font-black text-white/30 uppercase tracking-wider mr-1.5">Family Code</span>
-                <span className="font-mono font-bold text-indigo-400 tracking-widest">{familyCode}</span>
-              </span>
-              <span>
-                <span className="font-black text-white/30 uppercase tracking-wider mr-1.5">UID</span>
-                <span className="font-mono text-white/50">{uid.slice(0, 12)}…</span>
-              </span>
-              <span>
-                <span className="font-black text-white/30 uppercase tracking-wider mr-1.5">Queue items found</span>
-                <span className="font-bold text-white/60">{queue.length} washer · {dryerQueue.length} dryer</span>
-              </span>
-            </div>
-            <p className="text-white/20">
-              Open your Flutter app profile and confirm the Family Code above matches. If it doesn&apos;t, you&apos;re logged into different accounts.
-            </p>
-          </div>
-        ) : (
-          <div className="mb-4 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-xs text-red-300 font-bold">
-            ⚠ No family code on this account — bookings will NOT sync with the app. Log out and sign in with the same account you use in the Flutter app.
-          </div>
-        )}
-
         {/* ════════════════════════════════════════════════════════════════════
             WASHING MACHINE SECTION
         ════════════════════════════════════════════════════════════════════ */}
