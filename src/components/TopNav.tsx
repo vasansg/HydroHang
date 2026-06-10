@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, CalendarDays, Layers, Award, User, LogOut,
-  WashingMachine, Bell, Cloud, Cpu, Settings, Users, Lock,
+  Bell, Cloud, Cpu, Settings, Users, Lock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -61,8 +62,8 @@ export default function TopNav() {
 
           {/* Logo */}
           <Link href="/dashboard" className="flex shrink-0 items-center gap-3 group">
-            <div className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/30 transition-transform duration-200 group-hover:scale-105">
-              <WashingMachine size={18} className="text-white" />
+            <div className="relative transition-transform duration-200 group-hover:scale-105">
+              <Image src="/logo.png" alt="HydroHang" width={36} height={36} className="rounded-xl" />
             </div>
             <div className="leading-tight">
               <p className="text-sm font-black tracking-tight gradient-text">HydroHang</p>

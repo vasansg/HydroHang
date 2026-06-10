@@ -2,8 +2,9 @@
 
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { WashingMachine, Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import WelcomeOverlay from '@/components/WelcomeOverlay';
 
@@ -59,10 +60,8 @@ export default function LoginPage() {
           {/* Logo mark */}
           <div className="flex flex-col items-center mb-10" style={{ animation: 'fadeInUp 0.5s ease 0.05s both' }}>
             <div className="relative mb-5">
-              <div className="absolute inset-0 rounded-3xl bg-violet-600/30 blur-2xl scale-110" />
-              <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-2xl shadow-violet-500/40">
-                <WashingMachine size={38} className="text-white" />
-              </div>
+              <div className="absolute inset-0 rounded-3xl bg-violet-600/20 blur-2xl scale-110" />
+              <Image src="/logo.png" alt="HydroHang" width={96} height={96} className="relative rounded-3xl shadow-2xl shadow-violet-500/30" />
             </div>
             <h1 className="text-4xl font-black tracking-tight gradient-text">HydroHang</h1>
             <p className="text-white/40 mt-1.5 text-sm font-medium flex items-center gap-1.5">

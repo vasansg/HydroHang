@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -8,7 +9,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { useFamilyPermissions, ROUTE_PERMISSION_MAP } from '@/context/FamilyPermissionsContext';
 import {
-  WashingMachine, LayoutDashboard, CalendarDays, Layers, Cloud,
+  LayoutDashboard, CalendarDays, Layers, Cloud,
   Cpu, Users, Award, Bell, Settings, User, LogOut, Lock, Crown,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -73,10 +74,7 @@ export default function Sidebar() {
       {/* ── Logo ── */}
       <div className="flex items-center gap-3 px-5 h-16 border-b border-white/[0.06] shrink-0">
         <div className="relative shrink-0">
-          <div className="absolute inset-0 rounded-xl bg-violet-600/25 blur-md" />
-          <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/30">
-            <WashingMachine size={16} className="text-white" />
-          </div>
+          <Image src="/logo.png" alt="HydroHang" width={32} height={32} className="rounded-xl" />
         </div>
         <div className="min-w-0">
           <p className="text-sm font-black tracking-tight gradient-text">HydroHang</p>

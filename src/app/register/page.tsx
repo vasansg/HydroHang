@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { WashingMachine, Eye, EyeOff, Loader2, Crown, User, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Crown, User, Sparkles } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -66,10 +67,8 @@ export default function RegisterPage() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8" style={{ animation: 'fadeInUp 0.4s ease both' }}>
           <div className="relative mb-4">
-            <div className="absolute inset-0 rounded-3xl bg-violet-600/25 blur-xl scale-110" />
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-2xl shadow-violet-500/35">
-              <WashingMachine size={30} className="text-white" />
-            </div>
+            <div className="absolute inset-0 rounded-3xl bg-violet-600/20 blur-xl scale-110" />
+            <Image src="/logo.png" alt="HydroHang" width={80} height={80} className="relative rounded-3xl shadow-2xl shadow-violet-500/25" />
           </div>
           <h1 className="text-3xl font-black tracking-tight gradient-text">HydroHang</h1>
           <p className="text-white/40 mt-1 text-sm font-medium flex items-center gap-1.5">
